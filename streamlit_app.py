@@ -5,7 +5,9 @@ title = 'Fluidoterapia Caninos y Felinos'
 st.set_page_config(page_title=title, layout='wide')
 st.markdown(f"# **{title}**", unsafe_allow_html=True)
 
-    }
+# --- Estilos personalizados ---
+st.markdown("""
+    <style>
     /* Contenedor principal suavizado */
     .main .block-container {
         background-color: rgba(255,255,255,0.85);
@@ -65,9 +67,7 @@ st.markdown(f"# **{title}**", unsafe_allow_html=True)
         color: #0077b6 !important;
     }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 # --- Sidebar: Entradas agrupadas ---
 with st.sidebar.expander('Datos del Paciente', expanded=True):
@@ -77,6 +77,7 @@ with st.sidebar.expander('Datos del Paciente', expanded=True):
     state = st.selectbox('Estado', ['Mantenimiento', 'Reposición', 'Shock'])
     sens_loss = st.number_input('Pérdidas sensibles (ml)', min_value=0.0, format='%.1f')
     insens_loss = st.number_input('Pérdidas insensibles (ml)', min_value=0.0, format='%.1f')
+
 with st.sidebar.expander('Venoclisis', expanded=False):
     venous_set = st.selectbox('Tipo de Venoclisis', ['Macrogoteo (20 gtt/ml)', 'Macrogoteo (10 gtt/ml)', 'Microgoteo (60 gtt/ml)'])
     if '10' in venous_set:
@@ -97,20 +98,20 @@ with st.expander('Referencias de Guía', expanded=False):
 
 # --- Función de cálculo ---
 def calculate():
-    maint = (60 if species=='Perro' else 40) * weight
-    deficit = (dehydration/100) * weight * 1000
+    maint = (60 if species == 'Perro' else 40) * weight
+    deficit = (dehydration / 100) * weight * 1000
     if state == 'Mantenimiento':
         base = maint
     elif state == 'Reposición':
         base = maint + deficit
-    else:
-        base = (20 if species=='Perro' else 10) * weight
+    else:  # Shock
+        base = (20 if species == 'Perro' else 10) * weight
     vol_total = base + sens_loss + insens_loss
-    ml_per_hr = vol_total/24 if state!='Shock' else vol_total/0.25
-    ml_per_min = ml_per_hr/60
+    ml_per_hr = vol_total / 24 if state != 'Shock' else vol_total / 0.25
+    ml_per_min = ml_per_hr / 60
     drops_per_min = ml_per_min * drop_factor
-    drops_per_sec = drops_per_min/60
-    sec_per_drop = 1/drops_per_sec if drops_per_sec>0 else None
+    drops_per_sec = drops_per_min / 60
+    sec_per_drop = 1 / drops_per_sec if drops_per_sec > 0 else None
     return maint, deficit, base, sens_loss, insens_loss, vol_total, ml_per_hr, ml_per_min, drops_per_min, drops_per_sec, sec_per_drop
 
 # --- Botón y resultados ---
@@ -121,6 +122,7 @@ if st.sidebar.button('Calcular'):
     col1.metric('Mantenimiento (ml)', f'{m:.0f}')
     col2.metric('Déficit (ml)', f'{d:.0f}')
     col3.metric('Total (ml)', f'{tot:.0f}')
+
     st.subheader('Detalle de Tasas e Intervalos')
     dt1, dt2 = st.columns(2)
     dt1.metric('ml/h', f'{mlh:.1f}')
