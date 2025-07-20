@@ -5,7 +5,6 @@ title = 'Fluidoterapia Caninos y Felinos'
 st.set_page_config(page_title=title, layout='wide')
 st.markdown(f"# **{title}**", unsafe_allow_html=True)
 
-;
     }
     /* Contenedor principal suavizado */
     .main .block-container {
