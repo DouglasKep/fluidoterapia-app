@@ -167,25 +167,6 @@ if st.button("Generar resumen clínico (texto)"):
     )
     st.code(resumen)
 
-# ---------- Exportar plan inicial ----------
-st.download_button(
-    "Exportar plan inicial a CSV",
-    pd.DataFrame([{
-        "Especie": species,
-        "Peso (kg)": weight,
-        "Estado": state,
-        "Mantenimiento (mL/día)": mantenimiento_ml_dia,
-        "Déficit (mL)": deficit_ml,
-        "Volumen total (mL)": vol_total_ml,
-        "ml/h": ml_per_hr,
-        "ml/kg/h": ml_per_kg_per_hr,
-        "gtt/min": drops_per_min,
-        "seg/gota": sec_per_drop
-    }]).to_csv(index=False).encode('utf-8'),
-    file_name="plan_inicial_fluidoterapia.csv",
-    mime="text/csv"
-)
-
 # ---------- Módulo de reevaluación ----------
 if "reeval_history" not in st.session_state:
     st.session_state.reeval_history = pd.DataFrame(columns=[
@@ -253,12 +234,6 @@ if reevaluate_btn:
     st.success("Reevaluación registrada y plan ajustado automáticamente")
     st.info(f"Ajustes: {'; '.join(ajustes) if ajustes else 'Mantener plan actual'}")
 
-# ---------- Historial y exportación ----------
+# ---------- Historial ----------
 st.subheader("Historial de reevaluaciones con ajustes automáticos")
 st.dataframe(st.session_state.reeval_history)
-st.download_button(
-    "Descargar historial con ajustes",
-    st.session_state.reeval_history.to_csv(index=False).encode('utf-8'),
-    file_name="reevaluaciones_fluidoterapia_ajustadas.csv",
-    mime="text/csv"
-)
