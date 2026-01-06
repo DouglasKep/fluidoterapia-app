@@ -50,6 +50,12 @@ with st.sidebar.expander("Datos del paciente", expanded=True):
 # ---------------- MANTENIMIENTO ----------------
 with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
 
+    # --- RECOMENDACIÓN AUTOMÁTICA ---
+    if state == "Shock (resucitación)" or weight < 2 or weight > 40:
+        recommended_method = "132 × BW^0.75 (Perro) / 80 × BW^0.75 (Gato)"
+    else:
+        recommended_method = "60 mL/kg/día (Perro) / 40 mL/kg/día (Gato)"
+
     maint_method = st.selectbox(
         "Método de cálculo del mantenimiento",
         [
@@ -66,32 +72,31 @@ with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
         value=24
     )
 
-    # ---------- AYUDA PARA ELEGIR EL MÉTODO ----------
+    # ---------- MENSAJE DE RECOMENDACIÓN ----------
+    if maint_method != recommended_method:
+        st.warning(
+            f"💡 **Recomendación clínica:** {recommended_method}\n\n"
+            "Puedes usar otro método según tu criterio."
+        )
+    else:
+        st.success("Método alineado con la recomendación clínica.")
+
+    # ---------- AYUDA PARA ELEGIR ----------
     with st.expander("ℹ️ ¿Cómo elegir el método?"):
         st.markdown("""
         **60 mL/kg/día (perros) / 40 mL/kg/día (gatos)**  
-        Método clínico estándar recomendado por AAHA.  
         ✔ Pacientes estables  
         ✔ Hospitalización general  
 
         **132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)**  
-        Basado en requerimientos metabólicos (RER).  
-        ✔ Pacientes muy pequeños o muy grandes  
-        ✔ UCI o pacientes críticos  
+        ✔ Shock  
+        ✔ UCI  
+        ✔ Pesos extremos  
 
         **30 × BW + 70**  
-        Regla empírica de cálculo rápido.  
-        ✔ Estimación inicial  
-        ⚠️ Menor precisión en extremos de peso  
+        ✔ Estimación rápida  
+        ⚠️ Menor precisión  
         """)
-
-    # ---------- MENSAJE CONTEXTUAL ----------
-    if maint_method.startswith("60"):
-        st.info("Método estándar recomendado para la mayoría de pacientes clínicamente estables.")
-    elif maint_method.startswith("132"):
-        st.info("Método metabólico. Útil en pacientes críticos o con peso extremo.")
-    else:
-        st.info("Regla empírica rápida. Útil como orientación inicial.")
 
 # ---------------- BOLOS ----------------
 with st.sidebar.expander("Bolos (Resucitación)", expanded=False):
