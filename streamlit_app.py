@@ -47,7 +47,7 @@ with st.sidebar.expander("Datos del paciente", expanded=True):
         min_value=0.0, value=0.0
     )
 
-# ---------------- MANTENIMIENTO (CON AYUDA) ----------------
+# ---------------- MANTENIMIENTO ----------------
 with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
 
     maint_method = st.selectbox(
@@ -67,45 +67,31 @@ with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
     )
 
     # ---------- AYUDA PARA ELEGIR EL MÉTODO ----------
-    with st.expander("ℹ️ ¿Cómo elegir el método de mantenimiento?"):
+    with st.expander("ℹ️ ¿Cómo elegir el método?"):
         st.markdown("""
-        **🔹 60 mL/kg/día (perros) / 40 mL/kg/día (gatos)**  
-        - Método clínico estándar recomendado por AAHA  
-        - Adecuado para la mayoría de pacientes estables  
-        - Útil en práctica clínica diaria general  
+        **60 mL/kg/día (perros) / 40 mL/kg/día (gatos)**  
+        Método clínico estándar recomendado por AAHA.  
+        ✔ Pacientes estables  
+        ✔ Hospitalización general  
 
-        **🔹 132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)**  
-        - Basado en requerimientos metabólicos  
-        - Más preciso en pacientes muy pequeños o muy grandes  
-        - Útil en UCI, hospitalización prolongada o pacientes complejos  
+        **132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)**  
+        Basado en requerimientos metabólicos (RER).  
+        ✔ Pacientes muy pequeños o muy grandes  
+        ✔ UCI o pacientes críticos  
 
-        **🔹 30 × BW + 70**  
-        - Regla empírica de cálculo rápido  
-        - Útil como estimación inicial  
-        - Menos precisa en extremos de peso  
+        **30 × BW + 70**  
+        Regla empírica de cálculo rápido.  
+        ✔ Estimación inicial  
+        ⚠️ Menor precisión en extremos de peso  
         """)
 
-    # ---------- MENSAJE DINÁMICO SEGÚN ELECCIÓN ----------
+    # ---------- MENSAJE CONTEXTUAL ----------
     if maint_method.startswith("60"):
-        st.info(
-            "Método clínico estándar. Recomendado para la mayoría de "
-            "pacientes estables sin comorbilidades importantes."
-        )
+        st.info("Método estándar recomendado para la mayoría de pacientes clínicamente estables.")
     elif maint_method.startswith("132"):
-        st.info(
-            "Método metabólico (BW⁰·⁷⁵). Preferible en pacientes muy "
-            "pequeños, grandes o con mayor complejidad clínica."
-        )
+        st.info("Método metabólico. Útil en pacientes críticos o con peso extremo.")
     else:
-        st.info(
-            "Regla empírica rápida. Útil como orientación inicial, "
-            "pero menos precisa en extremos de peso."
-        )
-
-    st.caption(
-        "Las fórmulas son orientativas y se basan en guías AAHA. "
-        "La selección final depende del criterio clínico."
-    )
+        st.info("Regla empírica rápida. Útil como orientación inicial.")
 
 # ---------------- BOLOS ----------------
 with st.sidebar.expander("Bolos (Resucitación)", expanded=False):
@@ -173,9 +159,11 @@ deficit_ml = calcular_deficit(weight, dehydration)
 if state == "Mantenimiento":
     base_ml = mantenimiento_ml_dia
     base_hours = maint_period_hours
+
 elif state == "Reposición (rehidratación)":
     base_ml = mantenimiento_ml_dia * (reh_time_hours / 24) + deficit_ml
     base_hours = reh_time_hours
+
 else:
     base_ml = bolus_ml_per_kg * weight * bolus_repeats
     base_hours = (bolus_time_min / 60) * bolus_repeats
