@@ -64,20 +64,13 @@ with st.sidebar.expander("Mantenimiento (AAHA 2024)", expanded=False):
 
     with st.expander("ℹ️ ¿Cómo elegir el método?"):
         st.markdown("""
-        **60 mL/kg/día (perros) / 40 mL/kg/día (gatos)**  
-        ✔ Pacientes adultos estables  
-        ✔ Hospitalización general  
+        **Adultos – AAHA 2024**
 
-        **132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)**  
-        ✔ Shock  
-        ✔ UCI  
-        ✔ Pesos extremos  
+        • 60 mL/kg/día (perros) / 40 mL/kg/día (gatos)  
+        • 132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)  
+        • 30 × BW + 70 (estimación rápida)
 
-        **30 × BW + 70**  
-        ✔ Estimación rápida  
-        ⚠️ Menor precisión  
-
-        **Pediatría – AAHA 2024:**  
+        **Pediatría – Tabla 9 (AAHA):**  
         🐶 Cachorro: **3 × dosis adulta**  
         🐱 Gatito: **2.5 × dosis adulta**
         """)
@@ -107,7 +100,7 @@ with st.sidebar.expander("Tiempo de rehidratación", expanded=False):
 
 # ================= FUNCIONES =================
 def calcular_mantenimiento(species, weight, method, patient_type):
-    # Dosis adulta
+    # --- Dosis adulta base ---
     if method.startswith("60"):
         maintenance = 60 * weight if species == "Canino" else 40 * weight
     elif method.startswith("132"):
@@ -115,7 +108,7 @@ def calcular_mantenimiento(species, weight, method, patient_type):
     else:
         maintenance = 30 * weight + 70
 
-    # Ajuste pediátrico AAHA
+    # --- Ajuste pediátrico AAHA Tabla 9 ---
     if patient_type == "Pediátrico":
         maintenance *= 3 if species == "Canino" else 2.5
 
