@@ -2,13 +2,13 @@
 import streamlit as st
 import pandas as pd
 
-# ---------------- CONFIG ----------------
+# ================= CONFIG =================
 st.set_page_config(
     page_title="Calculadora de Fluidoterapia — AAHA (ES)",
     layout="wide"
 )
 
-# ---------------- ESTILOS ----------------
+# ================= ESTILOS =================
 st.markdown("""
 <style>
 .main .block-container {
@@ -19,45 +19,37 @@ h1 { margin-bottom: 0.25rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- TÍTULO ----------------
-st.title("Calculadora de Fluidoterapia — Basada en AAHA 2024")
+# ================= TÍTULO =================
+st.title("Calculadora de Fluidoterapia — AAHA 2024")
 st.caption(
-    "Guía clínica orientativa para caninos y felinos. "
+    "Herramienta clínica orientativa para caninos y felinos (adultos y pediátricos). "
     "La decisión final es responsabilidad del veterinario."
 )
 
-# ---------------- SIDEBAR: DATOS ----------------
+# ================= SIDEBAR =================
 with st.sidebar.expander("Datos del paciente", expanded=True):
     species = st.selectbox("Especie", ["Canino", "Felino"])
+    patient_type = st.selectbox("Tipo de paciente", ["Adulto", "Pediátrico"])
     weight = st.number_input("Peso (kg)", min_value=0.01, value=10.0, format="%.2f")
+
     state = st.selectbox(
         "Estado clínico",
         ["Mantenimiento", "Reposición (rehidratación)", "Shock (resucitación)"]
     )
+
     dehydration = st.slider(
         "Grado estimado de deshidratación (%)",
         0.0, 30.0, 8.0, step=0.5
     )
-    sens_loss = st.number_input(
-        "Pérdidas sensibles (mL/día)",
-        min_value=0.0, value=0.0
-    )
-    insens_loss = st.number_input(
-        "Pérdidas insensibles (mL/día)",
-        min_value=0.0, value=0.0
-    )
 
-# ---------------- MANTENIMIENTO ----------------
-with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
+    sens_loss = st.number_input("Pérdidas sensibles (mL/día)", min_value=0.0, value=0.0)
+    insens_loss = st.number_input("Pérdidas insensibles (mL/día)", min_value=0.0, value=0.0)
 
-    # --- RECOMENDACIÓN AUTOMÁTICA ---
-    if state == "Shock (resucitación)" or weight < 2 or weight > 40:
-        recommended_method = "132 × BW^0.75 (Perro) / 80 × BW^0.75 (Gato)"
-    else:
-        recommended_method = "60 mL/kg/día (Perro) / 40 mL/kg/día (Gato)"
+# ================= MANTENIMIENTO =================
+with st.sidebar.expander("Mantenimiento (AAHA 2024)", expanded=False):
 
     maint_method = st.selectbox(
-        "Método de cálculo del mantenimiento",
+        "Método de cálculo",
         [
             "60 mL/kg/día (Perro) / 40 mL/kg/día (Gato)",
             "132 × BW^0.75 (Perro) / 80 × BW^0.75 (Gato)",
@@ -67,25 +59,13 @@ with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
 
     maint_period_hours = st.number_input(
         "Periodo de administración (horas)",
-        min_value=1,
-        max_value=48,
-        value=24
+        min_value=1, max_value=48, value=24
     )
 
-    # ---------- MENSAJE DE RECOMENDACIÓN ----------
-    if maint_method != recommended_method:
-        st.warning(
-            f"💡 **Recomendación clínica:** {recommended_method}\n\n"
-            "Puedes usar otro método según tu criterio."
-        )
-    else:
-        st.success("Método alineado con la recomendación clínica.")
-
-    # ---------- AYUDA PARA ELEGIR ----------
     with st.expander("ℹ️ ¿Cómo elegir el método?"):
         st.markdown("""
         **60 mL/kg/día (perros) / 40 mL/kg/día (gatos)**  
-        ✔ Pacientes estables  
+        ✔ Pacientes adultos estables  
         ✔ Hospitalización general  
 
         **132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)**  
@@ -96,29 +76,24 @@ with st.sidebar.expander("Mantenimiento (AAHA)", expanded=False):
         **30 × BW + 70**  
         ✔ Estimación rápida  
         ⚠️ Menor precisión  
+
+        **Pediatría – AAHA 2024:**  
+        🐶 Cachorro: **3 × dosis adulta**  
+        🐱 Gatito: **2.5 × dosis adulta**
         """)
 
-# ---------------- BOLOS ----------------
+# ================= BOLOS =================
 with st.sidebar.expander("Bolos (Resucitación)", expanded=False):
-    if "bolus_default" not in st.session_state:
-        st.session_state.bolus_default = 20.0 if species == "Canino" else 10.0
-
     bolus_ml_per_kg = st.number_input(
         "Bolo por kg (mL/kg)",
         min_value=1.0, max_value=50.0,
-        value=st.session_state.bolus_default,
+        value=20.0 if species == "Canino" else 10.0,
         step=0.5
     )
-    bolus_repeats = st.number_input(
-        "Número de bolos",
-        min_value=1, max_value=5, value=1
-    )
-    bolus_time_min = st.number_input(
-        "Duración de cada bolo (min)",
-        min_value=1, max_value=60, value=15
-    )
+    bolus_repeats = st.number_input("Número de bolos", 1, 5, 1)
+    bolus_time_min = st.number_input("Duración de cada bolo (min)", 1, 60, 15)
 
-# ---------------- GOTEOS ----------------
+# ================= GOTEOS =================
 with st.sidebar.expander("Venoclisis y goteo", expanded=False):
     venous_set = st.selectbox(
         "Tipo de equipo",
@@ -126,39 +101,35 @@ with st.sidebar.expander("Venoclisis y goteo", expanded=False):
     )
     drop_factor = 20 if "20" in venous_set else (10 if "10" in venous_set else 60)
 
-# ---------------- REHIDRATACIÓN ----------------
+# ================= REHIDRATACIÓN =================
 with st.sidebar.expander("Tiempo de rehidratación", expanded=False):
     reh_time_hours = st.slider("Horas", 6, 48, 24)
 
-# ---------------- VALIDACIONES ----------------
-errors = []
-
-if weight <= 0:
-    errors.append("El peso debe ser mayor que 0 kg.")
-if maint_period_hours <= 0:
-    errors.append("El periodo de mantenimiento debe ser mayor que 0.")
-if state == "Reposición (rehidratación)" and reh_time_hours <= 0:
-    errors.append("El tiempo de rehidratación debe ser válido.")
-
-if errors:
-    for e in errors:
-        st.error(e)
-    st.stop()
-
-# ---------------- FUNCIONES ----------------
-def calcular_mantenimiento(species, weight, method):
+# ================= FUNCIONES =================
+def calcular_mantenimiento(species, weight, method, patient_type):
+    # Dosis adulta
     if method.startswith("60"):
-        return 60 * weight if species == "Canino" else 40 * weight
+        maintenance = 60 * weight if species == "Canino" else 40 * weight
     elif method.startswith("132"):
-        return 132 * (weight ** 0.75) if species == "Canino" else 80 * (weight ** 0.75)
+        maintenance = 132 * (weight ** 0.75) if species == "Canino" else 80 * (weight ** 0.75)
     else:
-        return 30 * weight + 70
+        maintenance = 30 * weight + 70
+
+    # Ajuste pediátrico AAHA
+    if patient_type == "Pediátrico":
+        maintenance *= 3 if species == "Canino" else 2.5
+
+    return maintenance
+
 
 def calcular_deficit(weight, dehydration):
-    return (dehydration / 100) * weight * 1000
+    return (dehydration / 100) * weight * 1000  # mL
 
-# ---------------- CÁLCULOS ----------------
-mantenimiento_ml_dia = calcular_mantenimiento(species, weight, maint_method)
+# ================= CÁLCULOS =================
+mantenimiento_ml_dia = calcular_mantenimiento(
+    species, weight, maint_method, patient_type
+)
+
 deficit_ml = calcular_deficit(weight, dehydration)
 
 if state == "Mantenimiento":
@@ -169,7 +140,7 @@ elif state == "Reposición (rehidratación)":
     base_ml = mantenimiento_ml_dia * (reh_time_hours / 24) + deficit_ml
     base_hours = reh_time_hours
 
-else:
+else:  # Shock
     base_ml = bolus_ml_per_kg * weight * bolus_repeats
     base_hours = (bolus_time_min / 60) * bolus_repeats
 
@@ -182,7 +153,7 @@ gtt_min = ml_per_min * drop_factor
 gtt_sec = gtt_min / 60
 sec_per_drop = 1 / gtt_sec if gtt_sec > 0 else None
 
-# ---------------- RESULTADOS ----------------
+# ================= RESULTADOS =================
 st.header("Resultados clínicos")
 
 c1, c2, c3 = st.columns(3)
@@ -194,12 +165,25 @@ with st.expander("Detalle técnico"):
     st.markdown(f"- **mL/h:** {ml_per_hr:.1f}")
     st.markdown(f"- **mL/kg/h:** {ml_per_kg_hr:.2f}")
     st.markdown(f"- **gtt/min:** {gtt_min:.1f}")
-    if sec_per_drop is not None:
-        st.markdown(f"- **seg/gota:** {sec_per_drop:.2f}")
-    else:
-        st.markdown("- **seg/gota:** —")
+    st.markdown(f"- **seg/gota:** {sec_per_drop:.2f}" if sec_per_drop else "-")
 
-# ---------------- HISTORIAL ----------------
+# ================= AVISOS =================
+warnings = []
+
+if patient_type == "Pediátrico" and weight > 10:
+    warnings.append("Paciente marcado como pediátrico con peso elevado: confirmar edad.")
+
+if state != "Shock (resucitación)":
+    max_rate = 5 if species == "Canino" else 4
+    if ml_per_kg_hr > max_rate:
+        warnings.append("Tasa elevada para mantenimiento/rehidratación.")
+
+if warnings:
+    st.subheader("Avisos clínicos")
+    for w in warnings:
+        st.warning(w)
+
+# ================= HISTORIAL =================
 if "reeval_history" not in st.session_state:
     st.session_state.reeval_history = []
 
