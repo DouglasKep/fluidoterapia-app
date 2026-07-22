@@ -113,11 +113,27 @@ with st.sidebar:
     bolus_time_minutes = st.number_input("Duración de cada bolo (min)", min_value=1, max_value=60, value=15)
     venous_set = st.selectbox("Equipo de venoclisis", ["Macrogoteo 20 gtt/mL", "Macrogoteo 10 gtt/mL", "Microgoteo 60 gtt/mL"])
 
-    with st.expander("ℹ️ Recordatorio de método"):
+    with st.expander("ℹ️ Métodos de mantenimiento — AAHA 2024"):
         st.markdown(
-            """- Adultos: fórmulas seleccionables de mantenimiento.
-            - Pediatría: el cálculo aplica el factor pediátrico actualmente configurado.
-            - La reposición, pérdidas continuadas, bolos y elección de solución requieren reevaluación clínica."""
+            """
+            **Adultos — AAHA 2024**
+
+            - **Perro:** 60 mL/kg/día
+            - **Gato:** 40 mL/kg/día
+            - **Perro:** 132 × BW<sup>0,75</sup> mL/día
+            - **Gato:** 80 × BW<sup>0,75</sup> mL/día
+            - **Perro y gato:** 30 × BW (kg) + 70 mL/día *(estimación rápida)*
+
+            **Pediatría — Tabla 9 (AAHA)**
+
+            - 🐶 Cachorro: **3 × dosis adulta**
+            - 🐱 Gatito: **2,5 × dosis adulta**
+            - Administrar como mantenimiento durante **24 h** y ajustar según el paciente.
+
+            La reposición del déficit, las pérdidas continuadas, los bolos y la elección de solución requieren reevaluación clínica.
+            [Consultar la Tabla 9 de AAHA](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-3-fluids-for-replacement-and-maintenance/)
+            """,
+            unsafe_allow_html=True,
         )
 
 
@@ -135,10 +151,16 @@ elif plan_type == "Mantenimiento":
 else:
     plan_hours = float(bolus_time_minutes * int(bolus_repeats) / 60)
 
-maintenance_plan_ml = maintenance_rate * plan_hours
-losses_plan_ml = losses_rate * plan_hours
 replacement_rate = deficit_ml / float(replacement_hours)
 replacement_plan_ml = deficit_ml
+
+# Para que el total combinado sea coherente, todos sus componentes usan la
+# misma ventana: la elegida para reponer el déficit.
+combined_hours = float(replacement_hours)
+combined_maintenance_ml = maintenance_rate * combined_hours
+combined_losses_ml = losses_rate * combined_hours
+combined_plan_ml = combined_maintenance_ml + replacement_plan_ml + combined_losses_ml
+combined_rate = maintenance_rate + replacement_rate + losses_rate
 
 # Los bolos se calculan y muestran siempre como una intervención separada.
 # No se incorporan al total de mantenimiento/rehidratación.
@@ -151,23 +173,17 @@ bolus_seconds_per_drop = 60 / single_bolus_gtt_minute if single_bolus_gtt_minute
 
 if plan_type == "Shock (resucitación)":
     bolus_rate = bolus_total_ml / plan_hours
-    total_rate = bolus_rate
-    total_plan_ml = bolus_total_ml
     title = "Plan de resucitación: bolos"
-    included_components = "Este cálculo no combina automáticamente mantenimiento, déficit ni pérdidas con el bolo. Reevaluar después de cada bolo."
+    included_components = "Los bolos se administran y reevaluan aparte. El total combinado continuo se muestra como referencia y no incluye los bolos."
 elif plan_type == "Mantenimiento":
-    total_rate = maintenance_rate + losses_rate
-    total_plan_ml = maintenance_plan_ml + losses_plan_ml
     title = f"Plan de mantenimiento · {int(plan_hours)} h"
-    included_components = "Incluye mantenimiento y pérdidas continuadas. El déficit se muestra como referencia, pero no se suma a este plan."
+    included_components = f"El total combinado muestra mantenimiento + déficit + pérdidas durante {int(combined_hours)} h. Decide clínicamente qué componentes pautar."
 else:
-    total_rate = maintenance_rate + replacement_rate + losses_rate
-    total_plan_ml = maintenance_plan_ml + replacement_plan_ml + losses_plan_ml
     title = f"Plan combinado de rehidratación · {int(plan_hours)} h"
-    included_components = "Incluye mantenimiento durante la ventana elegida, reposición de déficit y pérdidas continuadas proporcionalmente a esa misma ventana."
+    included_components = "El total combinado incluye mantenimiento, reposición de déficit y pérdidas continuadas en la misma ventana temporal."
 
-total_ml_per_kg_hour = total_rate / weight
-total_gtt_minute = (total_rate / 60) * drop_factor
+total_ml_per_kg_hour = combined_rate / weight
+total_gtt_minute = (combined_rate / 60) * drop_factor
 seconds_per_drop = 60 / total_gtt_minute if total_gtt_minute > 0 else None
 
 st.subheader(title)
@@ -176,7 +192,7 @@ st.markdown(f'<div class="component-note">{included_components}</div>', unsafe_a
 component_columns = st.columns(4)
 component_columns[0].metric(
     "Mantenimiento",
-    f"{format_volume(maintenance_plan_ml)} mL",
+    f"{format_volume(combined_maintenance_ml)} mL",
     f"{format_volume(maintenance_rate)} mL/h · {format_volume(maintenance_daily)} mL/24 h",
 )
 component_columns[1].metric(
@@ -186,13 +202,13 @@ component_columns[1].metric(
 )
 component_columns[2].metric(
     "Pérdidas continuadas",
-    f"{format_volume(losses_plan_ml)} mL",
+    f"{format_volume(combined_losses_ml)} mL",
     f"{format_volume(losses_rate)} mL/h · {format_volume(losses_daily)} mL/24 h",
 )
 component_columns[3].metric(
-    "Total del plan",
-    f"{format_volume(total_plan_ml)} mL",
-    f"{format_volume(total_rate)} mL/h",
+    "Total combinado",
+    f"{format_volume(combined_plan_ml)} mL",
+    f"{format_volume(combined_rate)} mL/h · en {replacement_hours} h",
 )
 
 if plan_type == "Shock (resucitación)":
@@ -202,7 +218,7 @@ st.subheader("Velocidades y administración")
 detail_columns = st.columns(4)
 detail_columns[0].metric("Mantenimiento", f"{format_volume(maintenance_rate)} mL/h")
 detail_columns[1].metric("Reposición", f"{format_volume(replacement_rate)} mL/h")
-detail_columns[2].metric("Total combinado", f"{format_volume(total_rate)} mL/h")
+detail_columns[2].metric("Total combinado", f"{format_volume(combined_rate)} mL/h")
 detail_columns[3].metric("Velocidad de goteo", f"{format_volume(total_gtt_minute)} gtt/min")
 
 st.subheader("Bolos de resucitación")
@@ -216,10 +232,10 @@ bolus_columns[3].metric("Goteo por bolo", f"{format_volume(single_bolus_gtt_minu
 with st.expander("Ver detalle técnico", expanded=False):
     table = pd.DataFrame(
         [
-            {"Componente": "Mantenimiento", "Volumen en el plan (mL)": maintenance_plan_ml, "Velocidad (mL/h)": maintenance_rate, "Destino sugerido": "Solución de mantenimiento, si procede"},
+            {"Componente": "Mantenimiento", "Volumen en el plan (mL)": combined_maintenance_ml, "Velocidad (mL/h)": maintenance_rate, "Destino sugerido": "Solución de mantenimiento, si procede"},
             {"Componente": "Reposición del déficit", "Volumen en el plan (mL)": replacement_plan_ml, "Velocidad (mL/h)": replacement_rate, "Destino sugerido": "Solución de reposición, si procede"},
-            {"Componente": "Pérdidas continuadas", "Volumen en el plan (mL)": losses_plan_ml, "Velocidad (mL/h)": losses_rate, "Destino sugerido": "Según pérdidas medidas/estimadas"},
-            {"Componente": "Total configurado", "Volumen en el plan (mL)": total_plan_ml, "Velocidad (mL/h)": total_rate, "Destino sugerido": "Suma de los componentes incluidos"},
+            {"Componente": "Pérdidas continuadas", "Volumen en el plan (mL)": combined_losses_ml, "Velocidad (mL/h)": losses_rate, "Destino sugerido": "Según pérdidas medidas/estimadas"},
+            {"Componente": "Total combinado", "Volumen en el plan (mL)": combined_plan_ml, "Velocidad (mL/h)": combined_rate, "Destino sugerido": "Suma de mantenimiento, déficit y pérdidas"},
             {"Componente": "Bolo de resucitación (aparte)", "Volumen en el plan (mL)": single_bolus_ml, "Velocidad (mL/h)": single_bolus_rate, "Destino sugerido": "No incluido en el total; reevaluar antes de repetir"},
         ]
     )
@@ -240,7 +256,7 @@ if plan_type != "Shock (resucitación)":
     if total_ml_per_kg_hour > reference_rate:
         warnings.append("La tasa total es elevada: reevaluar perfusión, pérdidas, comorbilidades y objetivo clínico.")
 if plan_type == "Mantenimiento" and dehydration > 0:
-    warnings.append("Hay un déficit calculado que no está incluido en el plan de mantenimiento seleccionado.")
+    warnings.append("El total combinado incluye el déficit como referencia; confirma si la reposición está indicada para este paciente.")
 
 if warnings:
     st.subheader("Avisos clínicos")
