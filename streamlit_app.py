@@ -1,184 +1,262 @@
-# app.py
-import streamlit as st
+"""Calculadora orientativa de fluidoterapia para caninos y felinos.
+
+La aplicación separa mantenimiento, reposición del déficit y pérdidas
+continuadas para que puedan pautarse con soluciones distintas si procede.
+"""
+
+from __future__ import annotations
+
 import pandas as pd
+import streamlit as st
 
-# ================= CONFIG =================
+
 st.set_page_config(
-    page_title="Calculadora de Fluidoterapia — AAHA (ES)",
-    layout="wide"
+    page_title="Calculadora de Fluidoterapia — AAHA 2024",
+    page_icon="💧",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ================= ESTILOS =================
-st.markdown("""
-<style>
-.main .block-container {
-    background-color: rgba(255,255,255,0.96);
-    padding: 1rem 1.25rem;
-}
-h1 { margin-bottom: 0.25rem; }
-</style>
-""", unsafe_allow_html=True)
-
-# ================= TÍTULO =================
-st.title("Calculadora de Fluidoterapia — AAHA 2024")
-st.caption(
-    "Herramienta clínica orientativa para caninos y felinos (adultos y pediátricos). "
-    "La decisión final es responsabilidad del veterinario."
+st.markdown(
+    """
+    <style>
+      .block-container { max-width: 1300px; padding-top: 2.2rem; padding-bottom: 3rem; }
+      h1 { letter-spacing: -0.04em; margin-bottom: 0.2rem; }
+      [data-testid="stMetric"] {
+          background: #ffffff; border: 1px solid #dbe4ef; border-radius: 14px;
+          padding: 1rem 1.1rem; min-height: 128px;
+      }
+      [data-testid="stMetricLabel"] { color: #334155; font-weight: 650; }
+      [data-testid="stMetricValue"] { color: #0f172a; }
+      .component-note {
+          border-left: 4px solid #0ea5e9; background: #f0f9ff; color: #0f172a;
+          padding: 0.85rem 1rem; border-radius: 0 10px 10px 0; margin: 0.7rem 0 1rem 0;
+      }
+      .clinical-note {
+          border-left: 4px solid #f59e0b; background: #fffbeb; color: #713f12;
+          padding: 0.85rem 1rem; border-radius: 0 10px 10px 0; margin-top: 1rem;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-# ================= SIDEBAR =================
-with st.sidebar.expander("Datos del paciente", expanded=True):
+
+def calculate_maintenance(species: str, weight: float, method: str, patient_type: str) -> float:
+    """Devuelve el mantenimiento estimado en mL/24 h con la fórmula elegida."""
+    if method.startswith("60"):
+        maintenance = 60 * weight if species == "Canino" else 40 * weight
+    elif method.startswith("132"):
+        maintenance = 132 * (weight**0.75) if species == "Canino" else 80 * (weight**0.75)
+    else:
+        maintenance = 30 * weight + 70
+
+    if patient_type == "Pediátrico":
+        maintenance *= 3 if species == "Canino" else 2.5
+    return maintenance
+
+
+def calculate_deficit(weight: float, dehydration: float) -> float:
+    """Déficit estimado en mL a partir de peso y porcentaje de deshidratación."""
+    return (dehydration / 100) * weight * 1000
+
+
+def format_volume(value: float) -> str:
+    return f"{value:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+st.title("💧 Calculadora de Fluidoterapia")
+st.caption("AAHA 2024 · Herramienta clínica orientativa para caninos y felinos. La decisión y la reevaluación corresponden al veterinario responsable.")
+
+with st.sidebar:
+    st.header("Datos del paciente")
     species = st.selectbox("Especie", ["Canino", "Felino"])
     patient_type = st.selectbox("Tipo de paciente", ["Adulto", "Pediátrico"])
     weight = st.number_input("Peso (kg)", min_value=0.01, value=10.0, format="%.2f")
 
-    state = st.selectbox(
-        "Estado clínico",
-        ["Mantenimiento", "Reposición (rehidratación)", "Shock (resucitación)"]
+    plan_type = st.selectbox(
+        "Tipo de plan",
+        ["Mantenimiento", "Reposición (rehidratación)", "Shock (resucitación)"],
+        help="La reposición muestra por separado el déficit y el mantenimiento; shock se presenta como bolos.",
     )
 
-    dehydration = st.slider(
-        "Grado estimado de deshidratación (%)",
-        0.0, 30.0, 8.0, step=0.5
-    )
-
-    sens_loss = st.number_input("Pérdidas sensibles (mL/día)", min_value=0.0, value=0.0)
-    insens_loss = st.number_input("Pérdidas insensibles (mL/día)", min_value=0.0, value=0.0)
-
-# ================= MANTENIMIENTO =================
-with st.sidebar.expander("Mantenimiento (AAHA 2024)", expanded=False):
-
-    maint_method = st.selectbox(
+    st.divider()
+    st.subheader("Mantenimiento")
+    maintenance_method = st.selectbox(
         "Método de cálculo",
         [
             "60 mL/kg/día (Perro) / 40 mL/kg/día (Gato)",
             "132 × BW^0.75 (Perro) / 80 × BW^0.75 (Gato)",
-            "30 × BW + 70 (mL/día)"
-        ]
+            "30 × BW + 70 (mL/día)",
+        ],
+    )
+    maintenance_window_hours = st.number_input(
+        "Ventana del plan de mantenimiento (horas)", min_value=1, max_value=48, value=24
     )
 
-    maint_period_hours = st.number_input(
-        "Periodo de administración (horas)",
-        min_value=1, max_value=48, value=24
+    st.divider()
+    st.subheader("Reposición y pérdidas")
+    dehydration = st.slider("Deshidratación estimada (%)", 0.0, 30.0, 8.0, step=0.5)
+    replacement_hours = st.select_slider(
+        "Reponer el déficit en", options=[6, 8, 12, 18, 24, 36, 48], value=24, format_func=lambda value: f"{value} h"
     )
+    sensible_losses_daily = st.number_input("Pérdidas sensibles estimadas (mL/24 h)", min_value=0.0, value=0.0)
+    insensible_losses_daily = st.number_input("Pérdidas insensibles estimadas (mL/24 h)", min_value=0.0, value=0.0)
 
-    with st.expander("ℹ️ ¿Cómo elegir el método?"):
-        st.markdown("""
-        **Adultos – AAHA 2024**
-
-        • 60 mL/kg/día (perros) / 40 mL/kg/día (gatos)  
-        • 132 × BW⁰·⁷⁵ (perros) / 80 × BW⁰·⁷⁵ (gatos)  
-        • 30 × BW + 70 (estimación rápida)
-
-        **Pediatría – Tabla 9 (AAHA):**  
-        🐶 Cachorro: **3 × dosis adulta**  
-        🐱 Gatito: **2.5 × dosis adulta**
-        """)
-
-# ================= BOLOS =================
-with st.sidebar.expander("Bolos (Resucitación)", expanded=False):
+    st.divider()
+    st.subheader("Bolos y venoclisis")
     bolus_ml_per_kg = st.number_input(
-        "Bolo por kg (mL/kg)",
-        min_value=1.0, max_value=50.0,
-        value=20.0 if species == "Canino" else 10.0,
-        step=0.5
+        "Bolo por kg (mL/kg)", min_value=1.0, max_value=50.0,
+        value=20.0 if species == "Canino" else 10.0, step=0.5,
     )
-    bolus_repeats = st.number_input("Número de bolos", 1, 5, 1)
-    bolus_time_min = st.number_input("Duración de cada bolo (min)", 1, 60, 15)
+    bolus_repeats = st.number_input("Número de bolos", min_value=1, max_value=5, value=1)
+    bolus_time_minutes = st.number_input("Duración de cada bolo (min)", min_value=1, max_value=60, value=15)
+    venous_set = st.selectbox("Equipo de venoclisis", ["Macrogoteo 20 gtt/mL", "Macrogoteo 10 gtt/mL", "Microgoteo 60 gtt/mL"])
 
-# ================= GOTEOS =================
-with st.sidebar.expander("Venoclisis y goteo", expanded=False):
-    venous_set = st.selectbox(
-        "Tipo de equipo",
-        ["Macrogoteo 20 gtt/mL", "Macrogoteo 10 gtt/mL", "Microgoteo 60 gtt/mL"]
-    )
-    drop_factor = 20 if "20" in venous_set else (10 if "10" in venous_set else 60)
-
-# ================= REHIDRATACIÓN =================
-with st.sidebar.expander("Tiempo de rehidratación", expanded=False):
-    reh_time_hours = st.slider("Horas", 6, 48, 24)
-
-# ================= FUNCIONES =================
-def calcular_mantenimiento(species, weight, method, patient_type):
-    # --- Dosis adulta base ---
-    if method.startswith("60"):
-        maintenance = 60 * weight if species == "Canino" else 40 * weight
-    elif method.startswith("132"):
-        maintenance = 132 * (weight ** 0.75) if species == "Canino" else 80 * (weight ** 0.75)
-    else:
-        maintenance = 30 * weight + 70
-
-    # --- Ajuste pediátrico AAHA Tabla 9 ---
-    if patient_type == "Pediátrico":
-        maintenance *= 3 if species == "Canino" else 2.5
-
-    return maintenance
+    with st.expander("ℹ️ Recordatorio de método"):
+        st.markdown(
+            """- Adultos: fórmulas seleccionables de mantenimiento.
+            - Pediatría: el cálculo aplica el factor pediátrico actualmente configurado.
+            - La reposición, pérdidas continuadas, bolos y elección de solución requieren reevaluación clínica."""
+        )
 
 
-def calcular_deficit(weight, dehydration):
-    return (dehydration / 100) * weight * 1000  # mL
+drop_factor = 20 if "20" in venous_set else 10 if "10" in venous_set else 60
+maintenance_daily = calculate_maintenance(species, weight, maintenance_method, patient_type)
+maintenance_rate = maintenance_daily / 24
+deficit_ml = calculate_deficit(weight, dehydration)
+losses_daily = sensible_losses_daily + insensible_losses_daily
+losses_rate = losses_daily / 24
 
-# ================= CÁLCULOS =================
-mantenimiento_ml_dia = calcular_mantenimiento(
-    species, weight, maint_method, patient_type
+if plan_type == "Reposición (rehidratación)":
+    plan_hours = float(replacement_hours)
+elif plan_type == "Mantenimiento":
+    plan_hours = float(maintenance_window_hours)
+else:
+    plan_hours = float(bolus_time_minutes * int(bolus_repeats) / 60)
+
+maintenance_plan_ml = maintenance_rate * plan_hours
+losses_plan_ml = losses_rate * plan_hours
+replacement_rate = deficit_ml / float(replacement_hours)
+replacement_plan_ml = deficit_ml
+
+# Los bolos se calculan y muestran siempre como una intervención separada.
+# No se incorporan al total de mantenimiento/rehidratación.
+single_bolus_ml = bolus_ml_per_kg * weight
+bolus_total_ml = single_bolus_ml * int(bolus_repeats)
+single_bolus_hours = float(bolus_time_minutes) / 60
+single_bolus_rate = single_bolus_ml / single_bolus_hours
+single_bolus_gtt_minute = (single_bolus_rate / 60) * drop_factor
+bolus_seconds_per_drop = 60 / single_bolus_gtt_minute if single_bolus_gtt_minute > 0 else None
+
+if plan_type == "Shock (resucitación)":
+    bolus_rate = bolus_total_ml / plan_hours
+    total_rate = bolus_rate
+    total_plan_ml = bolus_total_ml
+    title = "Plan de resucitación: bolos"
+    included_components = "Este cálculo no combina automáticamente mantenimiento, déficit ni pérdidas con el bolo. Reevaluar después de cada bolo."
+elif plan_type == "Mantenimiento":
+    total_rate = maintenance_rate + losses_rate
+    total_plan_ml = maintenance_plan_ml + losses_plan_ml
+    title = f"Plan de mantenimiento · {int(plan_hours)} h"
+    included_components = "Incluye mantenimiento y pérdidas continuadas. El déficit se muestra como referencia, pero no se suma a este plan."
+else:
+    total_rate = maintenance_rate + replacement_rate + losses_rate
+    total_plan_ml = maintenance_plan_ml + replacement_plan_ml + losses_plan_ml
+    title = f"Plan combinado de rehidratación · {int(plan_hours)} h"
+    included_components = "Incluye mantenimiento durante la ventana elegida, reposición de déficit y pérdidas continuadas proporcionalmente a esa misma ventana."
+
+total_ml_per_kg_hour = total_rate / weight
+total_gtt_minute = (total_rate / 60) * drop_factor
+seconds_per_drop = 60 / total_gtt_minute if total_gtt_minute > 0 else None
+
+st.subheader(title)
+st.markdown(f'<div class="component-note">{included_components}</div>', unsafe_allow_html=True)
+
+component_columns = st.columns(4)
+component_columns[0].metric(
+    "Mantenimiento",
+    f"{format_volume(maintenance_plan_ml)} mL",
+    f"{format_volume(maintenance_rate)} mL/h · {format_volume(maintenance_daily)} mL/24 h",
+)
+component_columns[1].metric(
+    "Reposición de déficit",
+    f"{format_volume(replacement_plan_ml)} mL",
+    f"{format_volume(replacement_rate)} mL/h · en {replacement_hours} h",
+)
+component_columns[2].metric(
+    "Pérdidas continuadas",
+    f"{format_volume(losses_plan_ml)} mL",
+    f"{format_volume(losses_rate)} mL/h · {format_volume(losses_daily)} mL/24 h",
+)
+component_columns[3].metric(
+    "Total del plan",
+    f"{format_volume(total_plan_ml)} mL",
+    f"{format_volume(total_rate)} mL/h",
 )
 
-deficit_ml = calcular_deficit(weight, dehydration)
+if plan_type == "Shock (resucitación)":
+    st.info(f"Bolo acumulado: {format_volume(bolus_total_ml)} mL en {format_volume(plan_hours)} h ({format_volume(bolus_rate)} mL/h).")
 
-if state == "Mantenimiento":
-    base_ml = mantenimiento_ml_dia
-    base_hours = maint_period_hours
+st.subheader("Velocidades y administración")
+detail_columns = st.columns(4)
+detail_columns[0].metric("Mantenimiento", f"{format_volume(maintenance_rate)} mL/h")
+detail_columns[1].metric("Reposición", f"{format_volume(replacement_rate)} mL/h")
+detail_columns[2].metric("Total combinado", f"{format_volume(total_rate)} mL/h")
+detail_columns[3].metric("Velocidad de goteo", f"{format_volume(total_gtt_minute)} gtt/min")
 
-elif state == "Reposición (rehidratación)":
-    base_ml = mantenimiento_ml_dia * (reh_time_hours / 24) + deficit_ml
-    base_hours = reh_time_hours
+st.subheader("Bolos de resucitación")
+st.caption("Se calculan aparte y no se suman al plan de mantenimiento o rehidratación. Reevaluar tras cada bolo antes de repetirlo.")
+bolus_columns = st.columns(4)
+bolus_columns[0].metric("Bolo individual", f"{format_volume(single_bolus_ml)} mL", f"{format_volume(bolus_ml_per_kg)} mL/kg")
+bolus_columns[1].metric("Número de bolos", f"{int(bolus_repeats)}", f"Total: {format_volume(bolus_total_ml)} mL")
+bolus_columns[2].metric("Velocidad por bolo", f"{format_volume(single_bolus_rate)} mL/h", f"Durante {int(bolus_time_minutes)} min")
+bolus_columns[3].metric("Goteo por bolo", f"{format_volume(single_bolus_gtt_minute)} gtt/min", f"{format_volume(bolus_seconds_per_drop)} s/gota")
 
-else:  # Shock
-    base_ml = bolus_ml_per_kg * weight * bolus_repeats
-    base_hours = (bolus_time_min / 60) * bolus_repeats
+with st.expander("Ver detalle técnico", expanded=False):
+    table = pd.DataFrame(
+        [
+            {"Componente": "Mantenimiento", "Volumen en el plan (mL)": maintenance_plan_ml, "Velocidad (mL/h)": maintenance_rate, "Destino sugerido": "Solución de mantenimiento, si procede"},
+            {"Componente": "Reposición del déficit", "Volumen en el plan (mL)": replacement_plan_ml, "Velocidad (mL/h)": replacement_rate, "Destino sugerido": "Solución de reposición, si procede"},
+            {"Componente": "Pérdidas continuadas", "Volumen en el plan (mL)": losses_plan_ml, "Velocidad (mL/h)": losses_rate, "Destino sugerido": "Según pérdidas medidas/estimadas"},
+            {"Componente": "Total configurado", "Volumen en el plan (mL)": total_plan_ml, "Velocidad (mL/h)": total_rate, "Destino sugerido": "Suma de los componentes incluidos"},
+            {"Componente": "Bolo de resucitación (aparte)", "Volumen en el plan (mL)": single_bolus_ml, "Velocidad (mL/h)": single_bolus_rate, "Destino sugerido": "No incluido en el total; reevaluar antes de repetir"},
+        ]
+    )
+    st.dataframe(
+        table.style.format({"Volumen en el plan (mL)": "{:.1f}", "Velocidad (mL/h)": "{:.1f}"}),
+        width="stretch",
+        hide_index=True,
+    )
+    st.markdown(f"- **Total:** {format_volume(total_ml_per_kg_hour)} mL/kg/h")
+    st.markdown(f"- **Equipo:** {drop_factor} gtt/mL · **goteo total:** {format_volume(total_gtt_minute)} gtt/min")
+    st.markdown(f"- **Segundos por gota:** {format_volume(seconds_per_drop)}" if seconds_per_drop else "- **Segundos por gota:** no aplicable")
 
-vol_total_ml = base_ml + sens_loss + insens_loss
-
-ml_per_hr = vol_total_ml / base_hours
-ml_per_min = ml_per_hr / 60
-ml_per_kg_hr = ml_per_hr / weight
-gtt_min = ml_per_min * drop_factor
-gtt_sec = gtt_min / 60
-sec_per_drop = 1 / gtt_sec if gtt_sec > 0 else None
-
-# ================= RESULTADOS =================
-st.header("Resultados clínicos")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Mantenimiento (mL/día)", f"{mantenimiento_ml_dia:.1f}")
-c2.metric("Déficit (mL)", f"{deficit_ml:.1f}")
-c3.metric("Volumen total (mL)", f"{vol_total_ml:.1f}")
-
-with st.expander("Detalle técnico"):
-    st.markdown(f"- **mL/h:** {ml_per_hr:.1f}")
-    st.markdown(f"- **mL/kg/h:** {ml_per_kg_hr:.2f}")
-    st.markdown(f"- **gtt/min:** {gtt_min:.1f}")
-    st.markdown(f"- **seg/gota:** {sec_per_drop:.2f}" if sec_per_drop else "-")
-
-# ================= AVISOS =================
 warnings = []
-
 if patient_type == "Pediátrico" and weight > 10:
-    warnings.append("Paciente marcado como pediátrico con peso elevado: confirmar edad.")
-
-if state != "Shock (resucitación)":
-    max_rate = 5 if species == "Canino" else 4
-    if ml_per_kg_hr > max_rate:
-        warnings.append("Tasa elevada para mantenimiento/rehidratación.")
+    warnings.append("Paciente marcado como pediátrico con peso elevado: confirmar edad, estado y pauta.")
+if plan_type != "Shock (resucitación)":
+    reference_rate = 5 if species == "Canino" else 4
+    if total_ml_per_kg_hour > reference_rate:
+        warnings.append("La tasa total es elevada: reevaluar perfusión, pérdidas, comorbilidades y objetivo clínico.")
+if plan_type == "Mantenimiento" and dehydration > 0:
+    warnings.append("Hay un déficit calculado que no está incluido en el plan de mantenimiento seleccionado.")
 
 if warnings:
     st.subheader("Avisos clínicos")
-    for w in warnings:
-        st.warning(w)
+    for warning in warnings:
+        st.warning(warning)
 
-# ================= HISTORIAL =================
+st.markdown(
+    "<div class='clinical-note'><strong>Uso clínico:</strong> esta herramienta no sustituye la valoración del paciente ni la monitorización. Ajusta el plan según perfusión, diuresis, electrolitos, glucemia, pérdidas y respuesta a la fluidoterapia.</div>",
+    unsafe_allow_html=True,
+)
+
 if "reeval_history" not in st.session_state:
     st.session_state.reeval_history = []
 
-st.subheader("Historial de reevaluaciones")
-st.dataframe(pd.DataFrame(st.session_state.reeval_history))
+with st.expander("Historial de reevaluaciones", expanded=False):
+    if st.session_state.reeval_history:
+        st.dataframe(pd.DataFrame(st.session_state.reeval_history), width="stretch", hide_index=True)
+    else:
+        st.caption("Todavía no hay reevaluaciones registradas en esta sesión.")
