@@ -1061,3 +1061,5 @@ st.caption(
     "compatibilidad o estabilidad. Verifica siempre "
     "las unidades y la preparación prescrita. Los valores se redondean solo para mostrarse. "
     "La bibliografía disponible es una selección inicial, no una lista de todos los fármacos CRI."
+)
+
