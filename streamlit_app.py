@@ -944,11 +944,25 @@ for row_number, row in cri_inputs.iterrows():
         calculated_rate = calculated_final_volume / float(duration)
 
     if calculated_final_volume < medication_volume_ml:
-        cri_errors.append(
-            f"{row_label}: el volumen final ({format_cri_value(calculated_final_volume)} mL) "
-            f"no puede ser menor que el volumen del medicamento "
-            f"({format_cri_value(medication_volume_ml)} mL)."
-        )
+        minimum_rate = (dose_base * weight) / concentration_base
+        if has_target_rate:
+            cri_errors.append(
+                f"{row_label}: con la dosis y concentración introducidas, se necesitan "
+                f"{format_cri_value(medication_volume_ml)} mL de fármaco para {format_cri_value(float(duration))} h. "
+                f"Eso requiere al menos {format_cri_value(minimum_rate)} mL/h, pero indicaste "
+                f"{format_cri_value(float(target_rate))} mL/h ({format_cri_value(calculated_final_volume)} mL finales). "
+                "La combinación no es posible con estos datos. Verifica la prescripción, la concentración "
+                "y el objetivo de volumen/ritmo; este cálculo no recomienda ajustar la dosis."
+            )
+        else:
+            cri_errors.append(
+                f"{row_label}: el volumen final indicado ({format_cri_value(calculated_final_volume)} mL) "
+                f"es menor que los {format_cri_value(medication_volume_ml)} mL de fármaco requeridos "
+                f"por la dosis prescrita para {format_cri_value(float(duration))} h. "
+                f"Se necesita un volumen final de al menos {format_cri_value(medication_volume_ml)} mL "
+                f"(ritmo mínimo {format_cri_value(minimum_rate)} mL/h). Verifica los datos; "
+                "este cálculo no recomienda ajustar la dosis."
+            )
         continue
     diluent_volume_ml = calculated_final_volume - medication_volume_ml
     cri_results.append(
@@ -1047,4 +1061,3 @@ st.caption(
     "compatibilidad o estabilidad. Verifica siempre "
     "las unidades y la preparación prescrita. Los valores se redondean solo para mostrarse. "
     "La bibliografía disponible es una selección inicial, no una lista de todos los fármacos CRI."
-)
