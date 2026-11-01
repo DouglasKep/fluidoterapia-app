@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+import unicodedata
 
 
 st.set_page_config(
@@ -68,6 +69,476 @@ def format_volume(value: float) -> str:
 def format_cri_value(value: float) -> str:
     """Muestra hasta seis cifras significativas, sin ceros decimales superfluos."""
     return format(value, ".6g").replace(".", ",")
+
+
+CRI_REFERENCE_SOURCES = {
+    "wsava_pain": {
+        "title": "WSAVA — 2022 Global Guidelines for the Recognition, Assessment and Treatment of Pain",
+        "type": "Guía internacional de consenso",
+        "updated": "Guía 2022 · publicada en 2023",
+        "url": "https://onlinelibrary.wiley.com/doi/10.1111/jsap.13566",
+    },
+    "recover_cpr": {
+        "title": "RECOVER — 2024 CPR Guidelines for Dogs and Cats",
+        "type": "Consenso internacional basado en revisión sistemática y metodología GRADE",
+        "updated": "Publicadas en junio de 2024",
+        "url": "https://onlinelibrary.wiley.com/doi/10.1111/vec.13391",
+    },
+    "acvim_mitral": {
+        "title": "ACVIM Consensus Statement — Myxomatous Mitral Valve Disease in Dogs",
+        "type": "Consenso ACVIM (nivel de evidencia bajo para esta recomendación)",
+        "updated": "Publicado en 2019",
+        "url": "https://academic.oup.com/jvim/article/33/3/1127/8448111",
+    },
+    "methadone_review": {
+        "title": "Incorporating methadone into companion animal anesthesia and analgesic protocols: A narrative review",
+        "type": "Revisión narrativa revisada por pares; no es un consenso",
+        "updated": "Publicado en 2023",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10581351/",
+    },
+    "septic_peritonitis_review": {
+        "title": "Perioperative management of septic peritonitis in small animals: A review",
+        "type": "Revisión clínica revisada por pares; no es un consenso",
+        "updated": "Publicado en enero de 2026",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12810469/",
+    },
+    "propofol_spc": {
+        "title": "Ficha técnica oficial veterinaria — Propofol 10 mg/mL",
+        "type": "Ficha técnica regulatoria de medicamento veterinario",
+        "updated": "Revisada en marzo de 2024",
+        "url": "https://www.vmd.defra.gov.uk/productinformationdatabase/files/QRD_Documents/QRD-Auth_2543398.PDF",
+    },
+    "merck_pressors": {
+        "title": "Merck Veterinary Manual — Initial Triage and Resuscitation of Small Animal Emergency Patients",
+        "type": "Manual clínico de consulta",
+        "updated": "Actualizado en abril de 2026",
+        "url": "https://www.merckvetmanual.com/emergency-medicine-and-critical-care/evaluation-and-initial-treatment-of-small-animal-emergency-patients/initial-triage-and-resuscitation-of-small-animal-emergency-patients",
+    },
+    "merck_pressors_es": {
+        "title": "Manual de veterinaria de Merck — Triaje inicial y resucitación de urgencia en pequeños animales",
+        "type": "Manual clínico de consulta",
+        "updated": "Actualizado en abril de 2026",
+        "url": "https://www.merckvetmanual.com/es-us/medicina-de-urgencia-y-cuidados-intensivos/evaluaci%C3%B3n-y-tratamiento-inicial-de-pacientes-de-urgencias-en-peque%C3%B1os-animales/triaje-inicial-y-resucitaci%C3%B3n-de-urgencia-en-peque%C3%B1os-animales",
+    },
+    "merck_analgesics": {
+        "title": "Merck Veterinary Manual — Analgesics Used in Animals",
+        "type": "Manual clínico de consulta",
+        "updated": "Actualizado en septiembre de 2024",
+        "url": "https://www.merckvetmanual.com/therapeutics/pain-assessment-and-management/analgesics-used-in-animals",
+    },
+    "merck_cardio_therapy": {
+        "title": "Merck Veterinary Manual — Principles of Therapy of Cardiovascular Disease in Animals",
+        "type": "Manual clínico de consulta",
+        "updated": "Actualizado en mayo de 2025",
+        "url": "https://www.merckvetmanual.com/circulatory-system/cardiovascular-system-introduction/principles-of-therapy-of-cardiovascular-disease-in-animals",
+    },
+}
+
+# Catálogo inicial de referencias publicadas para CRI en perros y gatos.
+# Mantiene el contexto por especie/indicación y no rellena la dosis prescrita.
+CRI_DOSE_REFERENCES = [
+    {
+        "aliases": ["nora", "norepinefrina", "noradrenalina", "noraadrenalina", "norepinephrine", "noradrenaline"],
+        "species": "Canino / Felino",
+        "regimen": "0,05–2 µg/kg/min IV CRI.",
+        "context": "Soporte vasopresor en pacientes pequeños; la fuente indica usar tras valorar/reponer adecuadamente el volumen intravascular, iniciar en el extremo bajo y titular con monitorización de presión y perfusión.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["nora", "norepinefrina", "noradrenalina", "noraadrenalina", "norepinephrine", "noradrenaline"],
+        "species": "Canino / Felino",
+        "regimen": "0,1–1 µg/kg/min IV CRI.",
+        "context": "Referencia para shock séptico asociado a peritonitis séptica, tras reponer el volumen intravascular. La revisión indica que no hay consensos específicos para peritonitis séptica en perros y gatos; no extrapolar este rango a otras causas de shock.",
+        "source": "septic_peritonitis_review",
+    },
+    {
+        "aliases": ["dopamina", "dopamine"],
+        "species": "Canino / Felino",
+        "regimen": "5–20 µg/kg/min IV CRI.",
+        "context": "Opción presora para soporte de presión arterial; titular a la respuesta y vigilar perfusión de órganos y arritmias.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["adrenalina", "epinefrina", "epinephrine"],
+        "species": "Canino / Felino",
+        "regimen": "0,125–2 µg/kg/min IV CRI.",
+        "context": "Opción presora en pacientes pequeños; la indicación y titulación dependen del cuadro clínico.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["fenilefrina", "phenylephrine"],
+        "species": "Canino / Felino",
+        "regimen": "1–3 µg/kg/min IV CRI.",
+        "context": "Opción presora en pacientes pequeños; monitorizar presión arterial y perfusión.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["vasopresina", "vasopressina", "vasopressin"],
+        "species": "Canino / Felino",
+        "regimen": "0,5–5 mUI/kg/min IV CRI.",
+        "context": "Opción presora en pacientes pequeños; la fuente informa la dosis en miliunidades.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["dobutamina", "dobutamine"],
+        "species": "Canino",
+        "regimen": "1–15 µg/kg/min IV CRI.",
+        "context": "Referencia para enfermedad cardiovascular; otra referencia de urgencias presenta un rango distinto para hipotensión/shock.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["dobutamina", "dobutamine"],
+        "species": "Felino",
+        "regimen": "0,5–5 µg/kg/min IV CRI.",
+        "context": "Referencia para enfermedad cardiovascular; otra referencia de urgencias presenta un rango distinto para hipotensión/shock.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["dobutamina", "dobutamine"],
+        "species": "Canino",
+        "regimen": "2–20 µg/kg/min IV CRI; dosis inicial indicada: 2–5 µg/kg/min.",
+        "context": "Referencia en triaje y soporte de presión arterial para pacientes de urgencias; requiere titulación y monitorización.",
+        "source": "merck_pressors",
+    },
+    {
+        "aliases": ["dobutamina", "dobutamine"],
+        "species": "Felino",
+        "regimen": "1–5 µg/kg/min IV CRI.",
+        "context": "Referencia de urgencias para gatos con miocardiopatía dilatada.",
+        "source": "merck_pressors_es",
+    },
+    {
+        "aliases": ["furosemida", "furosemide"],
+        "species": "Canino",
+        "regimen": "0,25–1 mg/kg/h IV CRI.",
+        "context": "Referencia de tratamiento agudo de enfermedad cardiovascular; la fuente también describe cargas intermitentes y manejo a largo plazo.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["furosemida", "furosemide"],
+        "species": "Canino",
+        "regimen": "Tras carga IV de 2 mg/kg: 0,66–1 mg/kg/h IV CRI hasta que disminuya el distrés respiratorio o por un máximo de 4 h.",
+        "context": "Consenso ACVIM para perros con enfermedad mitral en estadio D y fallo cardiaco refractario. La recomendación tiene nivel de evidencia bajo; la carga no se calcula en este apartado.",
+        "source": "acvim_mitral",
+    },
+    {
+        "aliases": ["furosemida", "furosemide"],
+        "species": "Felino",
+        "regimen": "0,25–0,6 mg/kg/h IV CRI.",
+        "context": "Referencia de tratamiento agudo de enfermedad cardiovascular; la fuente también describe cargas intermitentes y manejo a largo plazo.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["nitroprusiato", "nitroprusiato de sodio", "sodium nitroprusside", "nitroprusside"],
+        "species": "Canino",
+        "regimen": "Inicio: 1 µg/kg/min IV CRI; titular cada 15–30 min hasta 10–15 µg/kg/min como máximo.",
+        "context": "Referencia cardiovascular para vasodilatación aguda; la fuente indica no administrar en bolo y limitar el tratamiento a 24–48 h.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["nitroprusiato", "nitroprusiato de sodio", "sodium nitroprusside", "nitroprusside"],
+        "species": "Felino",
+        "regimen": "Inicio: 1 µg/kg/min IV CRI; titular hasta 3 µg/kg/min si es necesario.",
+        "context": "Referencia cardiovascular para vasodilatación aguda; la fuente indica no administrar en bolo y limitar el tratamiento a 24–48 h.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["esmolol"],
+        "species": "Canino / Felino",
+        "regimen": "10–200 µg/kg/min IV CRI si es necesario, tras bolo IV lento de 0,1–0,5 mg/kg.",
+        "context": "Referencia cardiovascular; el cálculo CRI no incluye el bolo y requiere monitorización y titulación clínica.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Canino",
+        "regimen": "20–50 µg/kg/min IV CRI; el cuadro también describe una dosis de carga de 1–2 mg/kg IV.",
+        "context": "Referencia analgésica para perros; la dosis de carga no se calcula en este apartado.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Felino",
+        "regimen": "La fuente indica que no se recomienda como CRI en gatos.",
+        "context": "Merck advierte que los gatos son sensibles a los efectos sobre el sistema nervioso central y cardiovascular.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Canino",
+        "regimen": "25–80 µg/kg/min IV CRI tras una dosis de carga.",
+        "context": "Referencia para tratamiento de arritmias; la dosis de carga no se calcula en este apartado.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Felino",
+        "regimen": "10–20 µg/kg/min IV CRI si es eficaz, tras una dosis de carga.",
+        "context": "Referencia para arritmias; la fuente recomienda una dosis menor por la sensibilidad de los gatos a los efectos sobre el sistema nervioso central.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["amiodarona", "amiodarone"],
+        "species": "Canino",
+        "regimen": "Infusión IV inicial de 2–5 mg/kg durante 30–60 min; después 0,8 mg/kg/h durante 6 h y luego 0,5 mg/kg/h.",
+        "context": "Referencia cardiovascular para arritmias. Es un esquema escalonado de infusión, no una dosis única; verificar formulación y monitorización ECG/hemodinámica.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["procainamida", "procainamide"],
+        "species": "Canino",
+        "regimen": "25–40 µg/kg/min IV CRI tras un bolo IV lento titulado al efecto.",
+        "context": "Referencia para arritmias; la dosis de carga no se calcula en este apartado.",
+        "source": "merck_cardio_therapy",
+    },
+    {
+        "aliases": ["fentanilo", "fentanyl"],
+        "species": "Canino",
+        "regimen": "0,01 mg/kg IV de carga, seguido de 0,01 mg/kg/h IV CRI.",
+        "context": "Referencia analgésica; la fuente advierte del inicio retardado de la analgesia con parche transdérmico.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["fentanilo", "fentanyl"],
+        "species": "Canino",
+        "regimen": "2–5 µg/kg IV de carga, seguido de 3–6 µg/kg/h IV CRI.",
+        "context": "Guía WSAVA para analgesia en perros; puede requerir titulación individual. El rango difiere de algunos manuales clínicos.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["ketamina", "ketamine"],
+        "species": "Canino / Felino",
+        "regimen": "2–10 µg/kg/min IV CRI; la guía describe un bolo inicial de 0,2–0,5 mg/kg y uso perioperatorio de hasta 72 h.",
+        "context": "Guía de dolor perioperatorio. La tasa se ajusta al procedimiento y respuesta clínica; los rangos más altos se usan durante cirugía y se reducen después.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["dexmedetomidina", "dexmedetomidine"],
+        "species": "Canino / Felino",
+        "regimen": "1 µg/kg/h IV CRI; los estudios citados la preceden con una carga de 1–2 µg/kg.",
+        "context": "Rango investigado para sedación/analgesia perioperatoria. La guía destaca cambios hemodinámicos relevantes y que suele reservarse a pacientes que puedan tolerarlos.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Canino",
+        "regimen": "Se han estudiado 50 µg/kg/min IV CRI; la guía señala que las tasas varían entre estudios.",
+        "context": "Uso perioperatorio analgésico/anestésico. Considerar el efecto ahorrador de anestésico inhalado; cautela al combinar con bloqueos de anestésico local.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["lidocaina", "lidocaine", "lignocaina", "lignocaine"],
+        "species": "Felino",
+        "regimen": "No establece una tasa universal de CRI; uso controvertido y con cautela por riesgo de depresión hemodinámica.",
+        "context": "La guía describe evidencia limitada y efectos hemodinámicos negativos en estudios felinos; no extrapolar la dosis canina.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["esmolol"],
+        "species": "Canino / Felino",
+        "regimen": "50 µg/kg/min IV CRI, tras 0,5 mg/kg IV/IO durante 3–5 min.",
+        "context": "Uso exclusivo en RCP para ritmos desfibrilables que persisten tras la primera desfibrilación; no es una pauta general para otras indicaciones.",
+        "source": "recover_cpr",
+    },
+    {
+        "aliases": ["fentanilo", "fentanyl"],
+        "species": "Felino",
+        "regimen": "0,01 mg/kg IV de carga, seguido de 0,01 mg/kg/h IV CRI.",
+        "context": "Referencia analgésica; la carga no se calcula en este apartado.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["fentanilo", "fentanyl"],
+        "species": "Felino",
+        "regimen": "1–3 µg/kg IV de carga, seguido de 2–3 µg/kg/h IV CRI.",
+        "context": "Guía WSAVA para analgesia en gatos; puede requerir titulación individual. El rango difiere de algunos manuales clínicos.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["ketamina", "ketamine"],
+        "species": "Canino",
+        "regimen": "0,5–1 mg/kg IV de carga, seguido de 0,12–0,6 mg/kg/h IV CRI.",
+        "context": "Adjunto analgésico; la fuente indica que puede ser neurotóxica por vía epidural o intratecal.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["ketamina", "ketamine"],
+        "species": "Felino",
+        "regimen": "0,5–1 mg/kg IV de carga, seguido de 0,1–0,6 mg/kg/h IV CRI.",
+        "context": "Adjunto analgésico; la fuente indica que puede ser neurotóxica por vía epidural o intratecal.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["dexmedetomidina", "dexmedetomidine"],
+        "species": "Canino",
+        "regimen": "0,001–0,002 mg/kg IV de carga, seguido de 0,0007–0,001 mg/kg/h IV CRI.",
+        "context": "Adjunto analgésico con efectos sedantes y cardiovasculares importantes.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["dexmedetomidina", "dexmedetomidine"],
+        "species": "Felino",
+        "regimen": "0,5 µg/kg IV de carga, seguido de 0,5 µg/kg/h IV CRI.",
+        "context": "Adjunto analgésico; consultar la fuente para efectos cardiovasculares y otros contextos de uso.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["maropitant", "maropitante"],
+        "species": "Canino",
+        "regimen": "1 mg/kg IV durante 1–2 min, seguido de 0,03 mg/kg/h IV CRI.",
+        "context": "La fuente advierte que la inyección IV rápida puede causar hipotensión grave.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["maropitant", "maropitante"],
+        "species": "Felino",
+        "regimen": "1 mg/kg IV durante 1–2 min, seguido de 0,1 mg/kg/h IV CRI.",
+        "context": "La fuente advierte que la inyección IV rápida puede causar hipotensión grave.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["butorfanol", "butorphanol"],
+        "species": "Canino",
+        "regimen": "0,2 mg/kg IV de carga, seguido de 0,1–0,24 mg/kg/h IV CRI.",
+        "context": "La fuente indica una duración corta del efecto y señala que la dosis puede reducirse en perros con mutación ABCB1-1Delta.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["butorfanol", "butorphanol"],
+        "species": "Felino",
+        "regimen": "0,2–0,4 mg/kg IV de carga, seguido de 0,1–0,24 mg/kg/h IV CRI.",
+        "context": "Referencia analgésica para gatos; consulta la fuente para la información adicional del fármaco.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["buprenorfina", "buprenorphine"],
+        "species": "Canino / Felino",
+        "regimen": "0,005–0,01 mg/kg IV de carga, seguido de 0,002–0,004 mg/kg/h IV CRI.",
+        "context": "La referencia corresponde a la formulación inyectable de 0,3 mg/mL; no confundir con formulaciones concentradas de acción prolongada.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["hidromorfona", "hydromorphone"],
+        "species": "Canino",
+        "regimen": "0,025–0,05 mg/kg IV de carga, seguido de 0,03 mg/kg/h IV CRI.",
+        "context": "Referencia analgésica para perros.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["hidromorfona", "hydromorphone"],
+        "species": "Felino",
+        "regimen": "0,025 mg/kg IV de carga, seguido de 0,01–0,05 mg/kg/h IV CRI.",
+        "context": "Referencia analgésica para gatos.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["metadona", "methadone"],
+        "species": "Canino",
+        "regimen": "0,1–0,2 mg/kg IV de carga, seguido de 0,12 mg/kg/h IV CRI.",
+        "context": "Tabla de referencia analgésica de Merck para perros. Una revisión clínica de 2023 describe 0,2 mg/kg IV de carga y 0,1 mg/kg/h en perros, con ajuste por respuesta.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["metadona", "methadone"],
+        "species": "Canino",
+        "regimen": "0,2 mg/kg IV de carga, seguido de 0,1 mg/kg/h IV CRI.",
+        "context": "Revisión narrativa clínica para analgesia en perros; basada en literatura limitada, no en un consenso. No presentar como dosis establecida para gatos.",
+        "source": "methadone_review",
+    },
+    {
+        "aliases": ["metadona", "methadone"],
+        "species": "Felino",
+        "regimen": "0,1–0,2 mg/kg IV de carga, seguido de 0,12 mg/kg/h IV CRI.",
+        "context": "Rango de manual clínico para gatos. La revisión clínica de 2023 citada para perros no establece una tasa CRI felina.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["propofol"],
+        "species": "Canino",
+        "regimen": "0,2–0,4 mg/kg/min IV CRI para mantenimiento anestésico; hasta 0,6 mg/kg/min durante periodos cortos según respuesta.",
+        "context": "Ficha técnica oficial. Es mantenimiento de anestesia general, no una pauta analgésica; exige anestesia y monitorización cardiorrespiratoria.",
+        "source": "propofol_spc",
+    },
+    {
+        "aliases": ["propofol"],
+        "species": "Felino",
+        "regimen": "0,1–0,3 mg/kg/min IV CRI para mantenimiento anestésico, ajustada a respuesta individual.",
+        "context": "Ficha técnica oficial. Es mantenimiento de anestesia general, no una pauta analgésica; la exposición prolongada puede retrasar la recuperación, especialmente en gatos.",
+        "source": "propofol_spc",
+    },
+    {
+        "aliases": ["morfina", "morphine"],
+        "species": "Canino",
+        "regimen": "0,3–0,5 mg/kg IV (administrada lentamente) de carga, seguido de 0,1–1 mg/kg/h IV CRI.",
+        "context": "La fuente advierte que la administración IV rápida puede causar excitación del sistema nervioso central.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["morfina", "morphine"],
+        "species": "Felino",
+        "regimen": "0,1–0,25 mg/kg IV de carga, seguido de 0,05–0,1 mg/kg/h IV CRI.",
+        "context": "La fuente advierte que la administración IV rápida puede causar excitación y que puede producir hipertermia en gatos.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["alfentanilo", "alfentanil"],
+        "species": "Canino",
+        "regimen": "0,5–1 µg/kg IV de carga, seguido de 0,5–1 µg/kg/min IV CRI.",
+        "context": "Opioide de acción muy corta; la fuente lo describe como CRI para alcanzar efecto.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["alfentanilo", "alfentanil"],
+        "species": "Felino",
+        "regimen": "5–10 µg/kg IV de carga, seguido de 0,8–1 µg/kg/min IV CRI.",
+        "context": "Opioide de acción muy corta; la fuente lo describe como CRI para alcanzar efecto.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["remifentanilo", "remifentanil"],
+        "species": "Canino",
+        "regimen": "1 µg/kg IV de carga, seguido de 0,1–0,3 µg/kg/min IV CRI.",
+        "context": "La fuente señala su duración de acción extremadamente corta.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["remifentanilo", "remifentanil"],
+        "species": "Canino",
+        "regimen": "6–12 µg/kg/h IV CRI; la guía no especifica bolo.",
+        "context": "Referencia WSAVA para analgesia; la dosis puede ajustarse según efecto y necesidad anestésica.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["remifentanilo", "remifentanil"],
+        "species": "Felino",
+        "regimen": "2,5 µg/kg IV de carga, seguido de 0,2–0,4 µg/kg/min IV CRI.",
+        "context": "La fuente señala su duración de acción extremadamente corta.",
+        "source": "merck_analgesics",
+    },
+    {
+        "aliases": ["remifentanilo", "remifentanil"],
+        "species": "Felino",
+        "regimen": "4–6 µg/kg/h IV CRI; la guía no especifica bolo.",
+        "context": "Referencia WSAVA para analgesia; la dosis puede ajustarse según efecto y necesidad anestésica.",
+        "source": "wsava_pain",
+    },
+    {
+        "aliases": ["sufentanilo", "sufentanil"],
+        "species": "Canino / Felino",
+        "regimen": "0,5–1 µg/kg IV lentamente de carga, seguido de 0,5–1 µg/kg/h IV CRI.",
+        "context": "Referencia analgésica para perros y gatos.",
+        "source": "merck_analgesics",
+    },
+]
+
+
+def normalize_drug_name(value: str) -> str:
+    """Normaliza acentos y mayúsculas para buscar nombres habituales de fármacos."""
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", value.casefold().strip())
+        if not unicodedata.combining(character)
+    )
 
 
 st.title("💧 Calculadora de Fluidoterapia")
@@ -286,7 +757,8 @@ st.divider()
 st.header("Cálculo de CRI")
 st.caption(
     "Calcula por separado el volumen de varios fármacos para sus respectivas CRI, "
-    "eligiendo el volumen final o el ritmo en mL/h. Introduce las dosis prescritas."
+    "eligiendo el volumen final o el ritmo en mL/h. Introduce las dosis prescritas; "
+    "al escribir un medicamento aparecerán referencias disponibles."
 )
 
 with st.container(border=True):
@@ -302,8 +774,8 @@ with st.container(border=True):
         "Puedes indicar el volumen final o el ritmo "
         "deseado; con la duración se calcula el otro. Si indicas ambos, deben coincidir. "
         "El diluyente es el volumen final menos el volumen del medicamento. La dosis y la concentración deben "
-        "pertenecer a la misma familia: masa con masa o UI con UI. Las UI no se convierten "
-        "a mg porque la equivalencia depende del medicamento."
+        "pertenecer a la misma familia: masa con masa o UI/mUI con UI/mUI. La actividad "
+        "no se convierte a masa porque la equivalencia depende del medicamento."
     )
 
 st.caption(f"Peso aplicado a todos los cálculos: **{weight:.2f} kg** (tomado de Datos del paciente).")
@@ -343,6 +815,7 @@ cri_inputs = st.data_editor(
                 "mg/kg/h", "mg/kg/min",
                 "g/kg/h", "g/kg/min",
                 "UI/kg/h", "UI/kg/min",
+                "mUI/kg/h", "mUI/kg/min",
             ],
             default="mg/kg/h",
         ),
@@ -354,7 +827,7 @@ cri_inputs = st.data_editor(
         ),
         "Unidad concentración": st.column_config.SelectboxColumn(
             "Unidad conc.", width=95,
-            options=["µg/mL", "mg/mL", "g/mL", "UI/mL"],
+            options=["µg/mL", "mg/mL", "g/mL", "UI/mL", "mUI/mL"],
             default="mg/mL",
         ),
         "Ritmo objetivo (mL/h)": st.column_config.NumberColumn(
@@ -414,33 +887,45 @@ for row_number, row in cri_inputs.iterrows():
         )
         continue
 
-    dose_is_ui = dose_unit.startswith("UI/")
-    concentration_is_ui = concentration_unit.startswith("UI/")
+    dose_is_ui = dose_unit.startswith("UI/") or dose_unit.startswith("mUI/")
+    concentration_is_ui = concentration_unit.startswith("UI/") or concentration_unit.startswith("mUI/")
     if dose_is_ui != concentration_is_ui:
         cri_errors.append(
-            f"{row_label}: las unidades no coinciden. Una dosis en UI/kg/tiempo requiere "
-            "concentración en UI/mL; las dosis de masa requieren una concentración de masa."
+            f"{row_label}: las unidades no coinciden. Una dosis en UI/mUI por kg y tiempo "
+            "requiere concentración en UI/mUI por mL; las dosis de masa requieren concentración de masa."
         )
         continue
 
     dose_to_base_per_hour = {
-        "µg/kg/h": (0.001, 1.0),
-        "µg/kg/min": (0.001, 60.0),
-        "mg/kg/h": (1.0, 1.0),
-        "mg/kg/min": (1.0, 60.0),
-        "g/kg/h": (1000.0, 1.0),
-        "g/kg/min": (1000.0, 60.0),
-        "UI/kg/h": (1.0, 1.0),
-        "UI/kg/min": (1.0, 60.0),
+        "µg/kg/h": ("mass", 0.001, 1.0),
+        "µg/kg/min": ("mass", 0.001, 60.0),
+        "mg/kg/h": ("mass", 1.0, 1.0),
+        "mg/kg/min": ("mass", 1.0, 60.0),
+        "g/kg/h": ("mass", 1000.0, 1.0),
+        "g/kg/min": ("mass", 1000.0, 60.0),
+        "UI/kg/h": ("activity", 1.0, 1.0),
+        "UI/kg/min": ("activity", 1.0, 60.0),
+        "mUI/kg/h": ("activity", 0.001, 1.0),
+        "mUI/kg/min": ("activity", 0.001, 60.0),
     }
-    concentration_to_mg = {"µg/mL": 0.001, "mg/mL": 1.0, "g/mL": 1000.0}
-    if dose_is_ui:
-        dose_base = float(dose) * dose_to_base_per_hour[dose_unit][1]
-        concentration_base = float(concentration)
-    else:
-        dose_mass_factor, dose_time_factor = dose_to_base_per_hour[dose_unit]
-        dose_base = float(dose) * dose_mass_factor * dose_time_factor
-        concentration_base = float(concentration) * concentration_to_mg[concentration_unit]
+    concentration_to_base = {
+        "µg/mL": ("mass", 0.001),
+        "mg/mL": ("mass", 1.0),
+        "g/mL": ("mass", 1000.0),
+        "UI/mL": ("activity", 1.0),
+        "mUI/mL": ("activity", 0.001),
+    }
+    dose_family, dose_unit_factor, dose_time_factor = dose_to_base_per_hour[dose_unit]
+    concentration_family, concentration_factor = concentration_to_base[concentration_unit]
+    if dose_family != concentration_family:
+        cri_errors.append(
+            f"{row_label}: la dosis y la concentración deben pertenecer a la misma familia "
+            "(masa con masa o UI/mUI con UI/mUI). No se convierten unidades de actividad a masa."
+        )
+        continue
+
+    dose_base = float(dose) * dose_unit_factor * dose_time_factor
+    concentration_base = float(concentration) * concentration_factor
 
     medication_volume_ml = (dose_base * weight * float(duration)) / concentration_base
     if has_target_rate:
@@ -481,6 +966,63 @@ for row_number, row in cri_inputs.iterrows():
 for error in cri_errors:
     st.error(error)
 
+cri_reference_queries = []
+for row_number, row in cri_inputs.iterrows():
+    medication_name = str(row.get("Medicamento", "")).strip()
+    if medication_name:
+        cri_reference_queries.append((row_number, medication_name))
+
+if cri_reference_queries:
+    st.subheader("Bibliografía de CRI por medicamento")
+    st.caption(
+        "Catálogo inicial para perros y gatos; no es exhaustivo ni se actualiza automáticamente. "
+        "Cuando existe una guía o consenso aplicable a esa indicación, se muestra primero; "
+        "los manuales clínicos quedan como referencias complementarias. Cada fuente muestra su fecha."
+    )
+    for row_number, medication_name in cri_reference_queries:
+        normalized_name = normalize_drug_name(medication_name)
+        matching_references = [
+            reference
+            for reference in CRI_DOSE_REFERENCES
+            if any(
+                normalize_drug_name(alias) == normalized_name
+                for alias in reference["aliases"]
+            )
+            and species in reference["species"]
+        ]
+        def reference_priority(reference: dict) -> int:
+            source_type = CRI_REFERENCE_SOURCES[reference["source"]]["type"]
+            if source_type.startswith(("Guía", "Consenso")):
+                return 0
+            if source_type.startswith("Ficha técnica"):
+                return 1
+            if "revisada por pares" in source_type:
+                return 2
+            return 3
+
+        matching_references.sort(key=reference_priority)
+
+        with st.expander(f"{medication_name} · {species}", expanded=bool(matching_references)):
+            if not matching_references:
+                st.info(
+                    "No hay una dosis de CRI con referencia en el catálogo actual para este "
+                    "nombre y especie. Usa la dosis prescrita y consulta una fuente veterinaria actual."
+                )
+                continue
+
+            for reference in matching_references:
+                source = CRI_REFERENCE_SOURCES[reference["source"]]
+                st.markdown(f"**Especie:** {reference['species']}")
+                st.markdown(f"**Régimen de referencia publicado:** {reference['regimen']}")
+                st.write(reference["context"])
+                st.markdown(
+                    f"**Fuente ({source['type']}):** [{source['title']}]({source['url']}) · {source['updated']}"
+                )
+            st.caption(
+                "La referencia no se copia a la dosis del cálculo: verifica indicación, "
+                "paciente, formulación y protocolo local antes de prescribir."
+            )
+
 if cri_results:
     st.subheader("Resultados por medicamento")
     st.dataframe(
@@ -503,5 +1045,6 @@ st.caption(
     "administrados al valorar el aporte total. El diluyente se calcula como volumen final menos "
     "volumen del medicamento. La app no calcula el aporte combinado de otros fluidos ni confirma "
     "compatibilidad o estabilidad. Verifica siempre "
-    "las unidades y la preparación prescrita. Los valores se redondean solo para mostrarse."
+    "las unidades y la preparación prescrita. Los valores se redondean solo para mostrarse. "
+    "La bibliografía disponible es una selección inicial, no una lista de todos los fármacos CRI."
 )
