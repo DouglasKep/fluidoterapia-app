@@ -293,11 +293,13 @@ with st.container(border=True):
     st.markdown("**Fórmula**")
     st.latex(
         r"\text{Cantidad de fármaco (mL)} = "
-        r"\frac{\text{Dosis (unidad/kg/h)} \times \text{Peso (kg)} \times "
-        r"\text{Duración (h)}}{\text{Concentración (misma unidad/mL)}}"
+        r"\frac{\text{Dosis (unidad/kg/tiempo)} \times \text{Peso (kg)} \times "
+        r"\text{Duración (mismo tiempo)}}{\text{Concentración (misma unidad/mL)}}"
     )
     st.caption(
-        "Cada medicamento se calcula por separado. Puedes indicar el volumen final o el ritmo "
+        "Dosis disponibles por hora y por minuto; si eliges /min, las horas de duración "
+        "se convierten automáticamente a minutos. Cada medicamento se calcula por separado. "
+        "Puedes indicar el volumen final o el ritmo "
         "deseado; con la duración se calcula el otro. Si indicas ambos, deben coincidir. "
         "El diluyente es el volumen final menos el volumen del medicamento. La dosis y la concentración deben "
         "pertenecer a la misma familia: masa con masa o UI con UI. Las UI no se convierten "
@@ -336,7 +338,12 @@ cri_inputs = st.data_editor(
         ),
         "Unidad dosis": st.column_config.SelectboxColumn(
             "Unidad dosis", width=95,
-            options=["µg/kg/h", "mg/kg/h", "g/kg/h", "UI/kg/h"],
+            options=[
+                "µg/kg/h", "µg/kg/min",
+                "mg/kg/h", "mg/kg/min",
+                "g/kg/h", "g/kg/min",
+                "UI/kg/h", "UI/kg/min",
+            ],
             default="mg/kg/h",
         ),
         "Duración (h)": st.column_config.NumberColumn(
@@ -411,18 +418,28 @@ for row_number, row in cri_inputs.iterrows():
     concentration_is_ui = concentration_unit.startswith("UI/")
     if dose_is_ui != concentration_is_ui:
         cri_errors.append(
-            f"{row_label}: las unidades no coinciden. Una dosis en UI/kg/h requiere "
+            f"{row_label}: las unidades no coinciden. Una dosis en UI/kg/tiempo requiere "
             "concentración en UI/mL; las dosis de masa requieren una concentración de masa."
         )
         continue
 
-    mass_to_mg = {"µg/kg/h": 0.001, "mg/kg/h": 1.0, "g/kg/h": 1000.0}
+    dose_to_base_per_hour = {
+        "µg/kg/h": (0.001, 1.0),
+        "µg/kg/min": (0.001, 60.0),
+        "mg/kg/h": (1.0, 1.0),
+        "mg/kg/min": (1.0, 60.0),
+        "g/kg/h": (1000.0, 1.0),
+        "g/kg/min": (1000.0, 60.0),
+        "UI/kg/h": (1.0, 1.0),
+        "UI/kg/min": (1.0, 60.0),
+    }
     concentration_to_mg = {"µg/mL": 0.001, "mg/mL": 1.0, "g/mL": 1000.0}
     if dose_is_ui:
-        dose_base = float(dose)
+        dose_base = float(dose) * dose_to_base_per_hour[dose_unit][1]
         concentration_base = float(concentration)
     else:
-        dose_base = float(dose) * mass_to_mg[dose_unit]
+        dose_mass_factor, dose_time_factor = dose_to_base_per_hour[dose_unit]
+        dose_base = float(dose) * dose_mass_factor * dose_time_factor
         concentration_base = float(concentration) * concentration_to_mg[concentration_unit]
 
     medication_volume_ml = (dose_base * weight * float(duration)) / concentration_base
