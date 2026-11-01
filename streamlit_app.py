@@ -65,6 +65,11 @@ def format_volume(value: float) -> str:
     return f"{value:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def format_cri_value(value: float) -> str:
+    """Muestra hasta seis cifras significativas, sin ceros decimales superfluos."""
+    return format(value, ".6g").replace(".", ",")
+
+
 st.title("💧 Calculadora de Fluidoterapia")
 st.caption("AAHA 2024 · Herramienta clínica orientativa para caninos y felinos. La decisión y la reevaluación corresponden al veterinario responsable.")
 
@@ -276,3 +281,210 @@ with st.expander("Historial de reevaluaciones", expanded=False):
         st.dataframe(pd.DataFrame(st.session_state.reeval_history), width="stretch", hide_index=True)
     else:
         st.caption("Todavía no hay reevaluaciones registradas en esta sesión.")
+
+st.divider()
+st.header("Cálculo de CRI")
+st.caption(
+    "Calcula por separado el volumen de varios fármacos para sus respectivas CRI, "
+    "eligiendo el volumen final o el ritmo en mL/h. Introduce las dosis prescritas."
+)
+
+with st.container(border=True):
+    st.markdown("**Fórmula**")
+    st.latex(
+        r"\text{Cantidad de fármaco (mL)} = "
+        r"\frac{\text{Dosis (unidad/kg/h)} \times \text{Peso (kg)} \times "
+        r"\text{Duración (h)}}{\text{Concentración (misma unidad/mL)}}"
+    )
+    st.caption(
+        "Cada medicamento se calcula por separado. Puedes indicar el volumen final o el ritmo "
+        "deseado; con la duración se calcula el otro. Si indicas ambos, deben coincidir. "
+        "El diluyente es el volumen final menos el volumen del medicamento. La dosis y la concentración deben "
+        "pertenecer a la misma familia: masa con masa o UI con UI. Las UI no se convierten "
+        "a mg porque la equivalencia depende del medicamento."
+    )
+
+st.caption(f"Peso aplicado a todos los cálculos: **{weight:.2f} kg** (tomado de Datos del paciente).")
+if "cri_medications_v3" not in st.session_state:
+    st.session_state.cri_medications_v3 = pd.DataFrame(
+        [{
+            "Medicamento": "",
+            "Dosis prescrita (mg/kg/h)": 0.0,
+            "Unidad dosis": "mg/kg/h",
+            "Duración (h)": 0.0,
+            "Concentración": 0.0,
+            "Unidad concentración": "mg/mL",
+            "Ritmo objetivo (mL/h)": 0.0,
+            "Volumen final deseado (mL)": 0.0,
+        }]
+    )
+
+cri_inputs = st.data_editor(
+    st.session_state.cri_medications_v3,
+    key="cri_medications_editor_v3",
+    num_rows="dynamic",
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Medicamento": st.column_config.TextColumn(
+            "Medicamento",
+            width=120,
+            help="Nombre para identificar el fármaco; no se sugieren medicamentos.",
+        ),
+        "Dosis prescrita (mg/kg/h)": st.column_config.NumberColumn(
+            "Dosis", width=80, min_value=0.0, step=0.01, format="%.6g"
+        ),
+        "Unidad dosis": st.column_config.SelectboxColumn(
+            "Unidad dosis", width=95,
+            options=["µg/kg/h", "mg/kg/h", "g/kg/h", "UI/kg/h"],
+            default="mg/kg/h",
+        ),
+        "Duración (h)": st.column_config.NumberColumn(
+            "Duración (h)", width=85, min_value=0.0, step=0.5, format="%.6g"
+        ),
+        "Concentración": st.column_config.NumberColumn(
+            "Conc.", width=80, min_value=0.0, step=0.1, format="%.6g"
+        ),
+        "Unidad concentración": st.column_config.SelectboxColumn(
+            "Unidad conc.", width=95,
+            options=["µg/mL", "mg/mL", "g/mL", "UI/mL"],
+            default="mg/mL",
+        ),
+        "Ritmo objetivo (mL/h)": st.column_config.NumberColumn(
+            "Ritmo mL/h",
+            width=90,
+            min_value=0.0,
+            step=0.1,
+            format="%.6g",
+            help="Opcional. Si lo indicas, se calcula el volumen final como ritmo × duración.",
+        ),
+        "Volumen final deseado (mL)": st.column_config.NumberColumn(
+            "Vol. final mL",
+            width=100,
+            min_value=0.0,
+            step=1.0,
+            format="%.6g",
+            help="Opcional si indicas ritmo. Si ambos están llenos, deben ser coherentes con la duración.",
+        ),
+    },
+)
+
+cri_results = []
+cri_errors = []
+for row_number, row in cri_inputs.iterrows():
+    name = str(row.get("Medicamento", "")).strip()
+    dose = row.get("Dosis prescrita (mg/kg/h)")
+    dose_unit = row.get("Unidad dosis", "mg/kg/h")
+    duration = row.get("Duración (h)")
+    concentration = row.get("Concentración")
+    concentration_unit = row.get("Unidad concentración", "mg/mL")
+    target_rate = row.get("Ritmo objetivo (mL/h)")
+    final_volume = row.get("Volumen final deseado (mL)")
+
+    # Ignora filas vacías que quedan disponibles para añadir otro medicamento.
+    values = (dose, duration, concentration, target_rate, final_volume)
+    if not name and all(pd.isna(value) or value == 0 for value in values):
+        continue
+
+    row_label = name or f"Fila {row_number + 1}"
+    if not name:
+        cri_errors.append(f"Fila {row_number + 1}: indica el nombre del medicamento.")
+        continue
+    if pd.isna(dose) or dose <= 0:
+        cri_errors.append(f"{row_label}: la dosis debe ser mayor que 0 {dose_unit}.")
+        continue
+    if pd.isna(duration) or duration <= 0:
+        cri_errors.append(f"{row_label}: la duración debe ser mayor que 0 h.")
+        continue
+    if pd.isna(concentration) or concentration <= 0:
+        cri_errors.append(f"{row_label}: la concentración debe ser mayor que 0.")
+        continue
+    has_target_rate = not pd.isna(target_rate) and target_rate > 0
+    has_final_volume = not pd.isna(final_volume) and final_volume > 0
+    if not has_target_rate and not has_final_volume:
+        cri_errors.append(
+            f"{row_label}: indica un volumen final mayor que 0 mL o un ritmo objetivo mayor que 0 mL/h."
+        )
+        continue
+
+    dose_is_ui = dose_unit.startswith("UI/")
+    concentration_is_ui = concentration_unit.startswith("UI/")
+    if dose_is_ui != concentration_is_ui:
+        cri_errors.append(
+            f"{row_label}: las unidades no coinciden. Una dosis en UI/kg/h requiere "
+            "concentración en UI/mL; las dosis de masa requieren una concentración de masa."
+        )
+        continue
+
+    mass_to_mg = {"µg/kg/h": 0.001, "mg/kg/h": 1.0, "g/kg/h": 1000.0}
+    concentration_to_mg = {"µg/mL": 0.001, "mg/mL": 1.0, "g/mL": 1000.0}
+    if dose_is_ui:
+        dose_base = float(dose)
+        concentration_base = float(concentration)
+    else:
+        dose_base = float(dose) * mass_to_mg[dose_unit]
+        concentration_base = float(concentration) * concentration_to_mg[concentration_unit]
+
+    medication_volume_ml = (dose_base * weight * float(duration)) / concentration_base
+    if has_target_rate:
+        calculated_final_volume = float(target_rate) * float(duration)
+        if has_final_volume and abs(float(final_volume) - calculated_final_volume) > 0.01:
+            cri_errors.append(
+                f"{row_label}: el ritmo {format_cri_value(float(target_rate))} mL/h durante "
+                f"{format_cri_value(float(duration))} h corresponde a "
+                f"{format_cri_value(calculated_final_volume)} mL, no a "
+                f"{format_cri_value(float(final_volume))} mL. Ajusta uno de los dos valores."
+            )
+            continue
+        calculated_rate = float(target_rate)
+    else:
+        calculated_final_volume = float(final_volume)
+        calculated_rate = calculated_final_volume / float(duration)
+
+    if calculated_final_volume < medication_volume_ml:
+        cri_errors.append(
+            f"{row_label}: el volumen final ({format_cri_value(calculated_final_volume)} mL) "
+            f"no puede ser menor que el volumen del medicamento "
+            f"({format_cri_value(medication_volume_ml)} mL)."
+        )
+        continue
+    diluent_volume_ml = calculated_final_volume - medication_volume_ml
+    cri_results.append(
+        {
+            "Medicamento": name,
+            "Dosis prescrita": f"{format_cri_value(float(dose))} {dose_unit}",
+            "Concentración": f"{format_cri_value(float(concentration))} {concentration_unit}",
+            "Medicamento a extraer (mL)": medication_volume_ml,
+            "Diluyente a añadir (mL)": diluent_volume_ml,
+            "Volumen final (mL)": calculated_final_volume,
+            "Ritmo de infusión (mL/h)": calculated_rate,
+        }
+    )
+
+for error in cri_errors:
+    st.error(error)
+
+if cri_results:
+    st.subheader("Resultados por medicamento")
+    st.dataframe(
+        pd.DataFrame(cri_results).style.format(
+            {
+                "Medicamento a extraer (mL)": format_cri_value,
+                "Diluyente a añadir (mL)": format_cri_value,
+                "Volumen final (mL)": format_cri_value,
+                "Ritmo de infusión (mL/h)": format_cri_value,
+            }
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+elif not cri_errors:
+    st.info("Añade una fila e introduce medicamento, dosis, duración y concentración; después elige volumen final o ritmo en mL/h.")
+
+st.caption(
+    "El ritmo mostrado corresponde solo a esa preparación de CRI; ten en cuenta los demás fluidos "
+    "administrados al valorar el aporte total. El diluyente se calcula como volumen final menos "
+    "volumen del medicamento. La app no calcula el aporte combinado de otros fluidos ni confirma "
+    "compatibilidad o estabilidad. Verifica siempre "
+    "las unidades y la preparación prescrita. Los valores se redondean solo para mostrarse."
+)
