@@ -1213,4 +1213,3 @@ with st.expander("Fuentes AAHA 2026", expanded=False):
         "Los objetivos dependen del tipo de insulina y del contexto del paciente. Esta herramienta ofrece "
         "orientación de monitorización; las decisiones terapéuticas corresponden al veterinario responsable."
     )
-
