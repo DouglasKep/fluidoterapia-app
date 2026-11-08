@@ -9,6 +9,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 import unicodedata
+import altair as alt
 
 
 st.set_page_config(
@@ -132,11 +133,147 @@ CRI_REFERENCE_SOURCES = {
         "updated": "Actualizado en mayo de 2025",
         "url": "https://www.merckvetmanual.com/circulatory-system/cardiovascular-system-introduction/principles-of-therapy-of-cardiovascular-disease-in-animals",
     },
+    "merck_prokinetics": {
+        "title": "Merck Veterinary Manual — Gastrointestinal Prokinetic Drugs Used in Monogastric Animals",
+        "type": "Manual clínico de consulta",
+        "updated": "Consulta: noviembre de 2026",
+        "url": "https://www.merckvetmanual.com/pharmacology/systemic-pharmacotherapeutics-of-the-digestive-system/gastrointestinal-prokinetic-drugs-used-in-monogastric-animals",
+    },
+    "acvim_htn": {
+        "title": "ACVIM Consensus Statement — Systemic Hypertension in Dogs and Cats",
+        "type": "Consenso ACVIM",
+        "updated": "Publicado en 2018",
+        "url": "https://academic.oup.com/jvim/article/32/6/1803/8471027",
+    },
+    "hydralazine_cases": {
+        "title": "Evaluation of presentation, treatment and outcome in hypertensive emergency in dogs and cats: 15 cases",
+        "type": "Serie clínica retrospectiva revisada por pares",
+        "updated": "Publicado en 2022",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9796549/",
+    },
+    "acvim_seizures": {
+        "title": "ACVIM Consensus Statement — Status Epilepticus and Cluster Seizures in Dogs and Cats",
+        "type": "Consenso ACVIM con recomendaciones graduadas",
+        "updated": "Publicado en 2024",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10800221/",
+    },
+    "midazolam_seizure_study": {
+        "title": "Continuous rate infusion of midazolam as emergent treatment for seizures in dogs",
+        "type": "Estudio clínico retrospectivo revisado por pares",
+        "updated": "Publicado en 2020",
+        "url": "https://doi.org/10.1111/jvim.15993",
+    },
+    "diazepam_seizure_study": {
+        "title": "Constant rate infusion of diazepam or propofol for canine cluster seizures or status epilepticus",
+        "type": "Estudio clínico retrospectivo revisado por pares",
+        "updated": "Publicado en 2022",
+        "url": "https://doi.org/10.3389/fvets.2022.1005948",
+    },
+    "tranexamic_dog_study": {
+        "title": "Effects of intravenous tranexamic acid in healthy adult dogs",
+        "type": "Estudio farmacocinético y farmacodinámico revisado por pares",
+        "updated": "Publicado en 2015",
+        "url": "https://doi.org/10.1111/vec.12319",
+    },
+    "aminocaproic_dog_study": {
+        "title": "The effect of ε-aminocaproic acid in severely thrombocytopenic dogs",
+        "type": "Estudio clínico prospectivo con controles históricos revisado por pares",
+        "updated": "Publicado en 2024",
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10937475/",
+    },
+    "famotidine_cri_study": {
+        "title": "Evaluation of the effect of a famotidine continuous rate infusion on intragastric pH in healthy dogs",
+        "type": "Ensayo aleatorizado cruzado revisado por pares",
+        "updated": "Publicado en 2018",
+        "url": "https://doi.org/10.1111/jvim.15558",
+    },
+    "metoclopramide_pk_study": {
+        "title": "Bolus and infusions of metoclopramide: insights on benefits and risks from pharmacokinetic modelling",
+        "type": "Reanálisis farmacocinético y modelización en perros revisado por pares",
+        "updated": "Publicado en 2026",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/42178715/",
+    },
 }
 
 # Catálogo inicial de referencias publicadas para CRI en perros y gatos.
 # Mantiene el contexto por especie/indicación y no rellena la dosis prescrita.
 CRI_DOSE_REFERENCES = [
+    {
+        "aliases": ["hidralazina", "hydralazine"],
+        "species": "Canino",
+        "regimen": "Tras carga IV de 0,1 mg/kg: 1,5–5 µg/kg/min IV CRI.",
+        "context": "Opción parenteral descrita por el consenso ACVIM para hipertensión sistémica en perros. La evidencia clínica veterinaria es limitada; titular con monitorización continua de presión arterial y valorar respuesta y perfusión.",
+        "source": "acvim_htn",
+    },
+    {
+        "aliases": ["hidralazina", "hydralazine"],
+        "species": "Canino / Felino",
+        "regimen": "En una serie de urgencias hipertensivas, 2 perros/gatos recibieron CRI de 1–5 µg/kg/min tras una carga de hidralazina.",
+        "context": "Serie retrospectiva pequeña; no establece eficacia comparativa ni una pauta universal. La publicación señala que la evidencia clínica veterinaria es escasa.",
+        "source": "hydralazine_cases",
+    },
+    {
+        "aliases": ["acido tranexamico", "tranexamic acid", "tranexamato"],
+        "species": "Canino",
+        "regimen": "10 mg/kg IV de carga, seguido de 10 mg/kg/h IV CRI durante 3 h.",
+        "context": "En estudio farmacocinético/farmacodinámico de perros sanos, esta pauta fue tolerada, pero los efectos antifibrinolíticos en TEG fueron inconsistentes. No demuestra beneficio clínico ni valida su uso rutinario en trauma.",
+        "source": "tranexamic_dog_study",
+    },
+    {
+        "aliases": ["acido aminocaproico", "aminocaproic acid", "aminocaproato", "epsilon aminocaproico"],
+        "species": "Canino",
+        "regimen": "En un estudio clínico: 100 mg/kg IV en 15 min, seguido de 400 mg/kg/24 h (16,7 mg/kg/h) IV CRI.",
+        "context": "Estudio prospectivo pequeño con controles históricos en perros con trombocitopenia grave. Aumentó la fuerza del coágulo, pero no redujo transfusiones, estancia ni mortalidad; no se recomienda como tratamiento rutinario. Considerar solo en contexto especializado de hemorragia grave.",
+        "source": "aminocaproic_dog_study",
+    },
+    {
+        "aliases": ["midazolam"],
+        "species": "Canino",
+        "regimen": "Estudio clínico retrospectivo: mediana 0,3 mg/kg/h IV CRI (rango observado 0,1–2,5 mg/kg/h).",
+        "context": "Para estatus epiléptico o convulsiones en racimo resistentes al tratamiento inicial. El rango es el observado en un estudio, no una dosis universal; el consenso ACVIM recomienda midazolam IV CRI en perros y requiere monitorización intensiva.",
+        "source": "midazolam_seizure_study",
+    },
+    {
+        "aliases": ["midazolam"],
+        "species": "Felino",
+        "regimen": "El consenso ACVIM recomienda midazolam IV CRI como benzodiacepina de elección; no establece una tasa felina universal en el texto principal.",
+        "context": "La recomendación para gatos tiene evidencia inferior a la canina. No extrapolar automáticamente la dosis canina; requiere un protocolo veterinario de urgencias y monitorización intensiva.",
+        "source": "acvim_seizures",
+    },
+    {
+        "aliases": ["diazepam"],
+        "species": "Canino",
+        "regimen": "0,5 mg/kg/h IV CRI, pauta empleada en un estudio clínico retrospectivo de convulsiones en perros.",
+        "context": "Para convulsiones en racimo o estatus epiléptico resistentes al tratamiento inicial. ACVIM recomienda considerar midazolam antes que diazepam, y advierte que diazepam se adsorbe al plástico y es fotosensible: línea dedicada, preparación inmediata y protección de la luz.",
+        "source": "diazepam_seizure_study",
+    },
+    {
+        "aliases": ["famotidina", "famotidine"],
+        "species": "Canino",
+        "regimen": "1 mg/kg IV de carga, seguido de 8 mg/kg/día (0,333 mg/kg/h) en CRI.",
+        "context": "Ensayo cruzado aleatorizado en 9 perros Beagle sanos: la CRI elevó el pH gástrico más que famotidina IV cada 12 h. Es un resultado farmacodinámico en perros sanos, no demuestra mejoría clínica en pacientes enfermos.",
+        "source": "famotidine_cri_study",
+    },
+    {
+        "aliases": [
+            "metoclopramida", "metoclopramide", "metoclopramida clorhidrato",
+            "metoclopramide hydrochloride", "metoclopramide hcl", "primperan",
+        ],
+        "species": "Canino",
+        "regimen": "Modelización de infusión: 1–2 mg/kg/día (0,042–0,083 mg/kg/h) IV. El modelo estima cargas de 0,05 mg/kg para 1 mg/kg/día y 0,1 mg/kg para 2 mg/kg/día.",
+        "context": "Reanálisis farmacocinético y modelización basado en datos de perros; no es un ensayo clínico de eficacia. Descarta obstrucción, hemorragia o perforación gastrointestinal. No extrapolar la pauta modelada a gatos.",
+        "source": "metoclopramide_pk_study",
+    },
+    {
+        "aliases": [
+            "metoclopramida", "metoclopramide", "metoclopramida clorhidrato",
+            "metoclopramide hydrochloride", "metoclopramide hcl", "primperan",
+        ],
+        "species": "Felino",
+        "regimen": "0,01–0,02 mg/kg/h IV en infusión continua.",
+        "context": "Rango de manual clínico; no es una pauta validada por el estudio farmacocinético de 2026, que se hizo en perros. Descarta obstrucción, hemorragia o perforación gastrointestinal; el efecto antiemético puede ser limitado en gatos.",
+        "source": "merck_prokinetics",
+    },
     {
         "aliases": ["nora", "norepinefrina", "noradrenalina", "noraadrenalina", "norepinephrine", "noradrenaline"],
         "species": "Canino / Felino",
@@ -1000,9 +1137,14 @@ if cri_reference_queries:
             for reference in CRI_DOSE_REFERENCES
             if any(
                 normalize_drug_name(alias) == normalized_name
+                or (
+                    len(normalize_drug_name(alias)) >= 8
+                    and normalize_drug_name(alias) in normalized_name
+                )
                 for alias in reference["aliases"]
             )
-            and species in reference["species"]
+            and normalize_drug_name(species)
+            in [normalize_drug_name(item.strip()) for item in reference["species"].split("/")]
         ]
         def reference_priority(reference: dict) -> int:
             source_type = CRI_REFERENCE_SOURCES[reference["source"]]["type"]
@@ -1068,8 +1210,52 @@ st.divider()
 st.header("Curva de glucosa")
 st.caption(
     "Introduce las mediciones a lo largo del intervalo entre dosis. La gráfica y el resumen se actualizan "
-    "con los datos introducidos; los valores no cambian ni recomiendan por sí mismos una pauta de insulina."
+    "con los datos introducidos. La orientación de dosis es una referencia para revisar con el veterinario, "
+    "no una prescripción automática."
 )
+
+if species == "Canino":
+    insulin_options = [
+        "Insulina porcina lente (U-40)", "NPH (U-100)", "PZI / protamina zinc (U-40)",
+        "Glargina U-100", "Glargina U-300", "Degludec", "Detemir", "Otra / no consta",
+    ]
+else:
+    insulin_options = [
+        "Glargina U-100", "PZI / protamina zinc (U-40)", "Insulina porcina lente (U-40)",
+        "Glargina U-300", "Degludec", "NPH (U-100)", "Otra / no consta", "No usa insulina (SGLT2)",
+    ]
+
+insulin_cols = st.columns(3)
+insulin_type = insulin_cols[0].selectbox("Tipo de insulina", insulin_options, key="curve_insulin_type")
+current_dose = insulin_cols[1].number_input(
+    "Dosis prescrita actual (U por administración)", min_value=0.0, value=0.0,
+    step=0.5, format="%.2f", help="Opcional: anota la dosis que ya prescribió el veterinario.",
+    key="curve_insulin_dose",
+)
+dosing_interval = insulin_cols[2].selectbox(
+    "Intervalo prescrito", ["Cada 12 h", "Cada 24 h", "Otro / no consta"],
+    key="curve_insulin_interval",
+)
+st.caption(
+    "Anota la dosis en unidades (U), no en mL. Comprueba que la concentración de la insulina "
+    "(p. ej., U-40 o U-100) coincide con la jeringa o dispositivo utilizado."
+)
+if species == "Canino" and insulin_type in {"Insulina porcina lente (U-40)", "NPH (U-100)"}:
+    st.caption(
+        "Referencia AAHA 2026 de inicio para estas insulinas: 0,25–0,5 U/kg cada 12 h. "
+        "La guía recomienda calcular con el peso ideal estimado y redondear hacia abajo a unidades enteras; "
+        "esto no es una recomendación para cambiar la dosis actual."
+    )
+elif species == "Felino" and insulin_type in {"Glargina U-100", "PZI / protamina zinc (U-40)"}:
+    st.caption(
+        "Referencia AAHA 2026 de inicio: habitualmente 1 U por gato cada 12 h para glargina U-100 o PZI. "
+        "Es una dosis inicial de referencia, no una recomendación para cambiar el tratamiento actual."
+    )
+elif species == "Felino" and insulin_type == "Glargina U-300":
+    st.caption(
+        "Referencia AAHA 2026 de inicio para glargina U-300: 0,5 U/kg cada 12–24 h o 2 U por gato cada 24 h, "
+        "según el protocolo y el paciente. No se debe extrapolar a otras insulinas ni usar para ajustar esta curva."
+    )
 
 curve_context = st.radio(
     "Dónde se realizó la curva",
@@ -1082,6 +1268,7 @@ clinical_signs = st.multiselect(
     ["Poliuria", "Polidipsia", "Polifagia", "Pérdida de peso", "Signos compatibles con hipoglucemia"],
     key="glucose_curve_signs",
 )
+hyperglycemia_signs = {"Poliuria", "Polidipsia", "Polifagia", "Pérdida de peso"}.intersection(clinical_signs)
 
 if "glucose_curve_data_v1" not in st.session_state:
     st.session_state.glucose_curve_data_v1 = pd.DataFrame(
@@ -1100,7 +1287,7 @@ curve_inputs = st.data_editor(
     column_config={
         "Tiempo desde comida/insulina (h)": st.column_config.NumberColumn(
             "Tiempo (h)", min_value=0.0, max_value=24.0, step=0.5, format="%.1f",
-            help="Hora 0 corresponde a la comida y administración habitual de insulina.",
+            help="Registra la medición basal en hora 0, justo antes de la comida y la dosis; luego anota el tiempo transcurrido.",
         ),
         "Glucemia (mg/dL)": st.column_config.NumberColumn(
             "Glucemia (mg/dL)", min_value=0.0, max_value=2000.0, step=1.0, format="%.0f",
@@ -1118,23 +1305,75 @@ if not valid_curve.empty:
         st.warning("Hay horas repetidas. Asigna una hora distinta a cada medición para interpretar la curva.")
     else:
         st.subheader("Gráfica de glucosa")
-        st.line_chart(
-            valid_curve.set_index("Tiempo desde comida/insulina (h)")["Glucemia (mg/dL)"],
-            x_label="Tiempo desde comida/insulina (h)",
-            y_label="Glucemia (mg/dL)",
-            height=360,
+        chart_data = valid_curve.copy()
+        chart_data["Hora de toma"] = chart_data["Tiempo desde comida/insulina (h)"].map(lambda h: f"{h:g} h")
+        hour_ticks = sorted(chart_data["Tiempo desde comida/insulina (h)"].astype(float).unique().tolist())
+        x_field = "Tiempo desde comida/insulina (h)"
+        y_field = "Glucemia (mg/dL)"
+        chart_base = alt.Chart(chart_data)
+        glucose_line = chart_base.mark_line(color="#1677d2", strokeWidth=3).encode(
+            x=alt.X(
+                f"{x_field}:Q", title="Horas desde comida/insulina",
+                scale=alt.Scale(domain=[0, max(12.0, float(max(hour_ticks)))], nice=False),
+                axis=alt.Axis(values=hour_ticks, labelExpr="datum.value + ' h'", labelAngle=0),
+            ),
+            y=alt.Y(f"{y_field}:Q", title="Glucemia (mg/dL)", scale=alt.Scale(zero=False)),
+            tooltip=[alt.Tooltip("Hora de toma:N"), alt.Tooltip(f"{y_field}:Q", format=".0f")],
         )
+        glucose_points = chart_base.mark_circle(size=130, color="#0759a8", stroke="white", strokeWidth=1.5).encode(
+            x=alt.X(f"{x_field}:Q"), y=alt.Y(f"{y_field}:Q"),
+            tooltip=[alt.Tooltip("Hora de toma:N"), alt.Tooltip(f"{y_field}:Q", format=".0f")],
+        )
+        glucose_labels = chart_base.mark_text(dy=-15, fontSize=12, fontWeight="bold", color="#17324d").encode(
+            x=alt.X(f"{x_field}:Q"), y=alt.Y(f"{y_field}:Q"),
+            text=alt.Text(f"{y_field}:Q", format=".0f"),
+        )
+        st.altair_chart(
+            alt.layer(glucose_line, glucose_points, glucose_labels)
+            .properties(height=380)
+            .interactive(),
+            use_container_width=True,
+        )
+        st.caption("Cada punto marca una toma real; el eje X muestra las horas anotadas y la cifra sobre cada punto es la glucemia.")
 
         nadir_row = valid_curve.loc[valid_curve["Glucemia (mg/dL)"].idxmin()]
         nadir = float(nadir_row["Glucemia (mg/dL)"])
         nadir_time = float(nadir_row["Tiempo desde comida/insulina (h)"])
         duration_h = float(valid_curve["Tiempo desde comida/insulina (h)"].max())
-        metrics = st.columns(3)
-        metrics[0].metric("Nadir observado", f"{nadir:.0f} mg/dL")
+        metrics = st.columns(4)
+        metrics[0].metric(
+            "Mínimo basal" if nadir_time == 0 else "Nadir observado",
+            f"{nadir:.0f} mg/dL",
+        )
         metrics[1].metric("Hora del nadir", f"{nadir_time:g} h")
         metrics[2].metric("Duración registrada", f"{duration_h:g} h")
+        metrics[3].metric(
+            "Rango medido",
+            f"{valid_curve['Glucemia (mg/dL)'].min():.0f}–{valid_curve['Glucemia (mg/dL)'].max():.0f} mg/dL",
+            f"{len(valid_curve)} mediciones",
+        )
+        with st.expander("Ver mediciones de la curva", expanded=False):
+            st.dataframe(
+                valid_curve.rename(
+                    columns={
+                        "Tiempo desde comida/insulina (h)": "Tiempo (h)",
+                        "Glucemia (mg/dL)": "Glucemia (mg/dL)",
+                    }
+                ).style.format({"Tiempo (h)": "{:.1f}", "Glucemia (mg/dL)": "{:.0f}"}),
+                width="stretch",
+                hide_index=True,
+            )
 
         st.subheader("Orientación según AAHA 2026")
+        st.write(
+            f"**Insulina registrada:** {insulin_type} · **Dosis anotada:** "
+            f"{current_dose:g} U por administración · **Intervalo:** {dosing_interval}."
+        )
+        if nadir_time == 0:
+            st.warning(
+                "La medición más baja es la basal de hora 0, antes de la comida y la insulina. "
+                "Todavía no identifica el nadir posterior a la dosis; interpreta las mediciones siguientes con el veterinario."
+            )
         if species == "Felino" and curve_context == "En clínica":
             st.warning(
                 "AAHA 2026 no recomienda curvas realizadas en clínica para el seguimiento rutinario de gatos: "
@@ -1157,7 +1396,7 @@ if not valid_curve.empty:
                 "valoran el tiempo por debajo de 200 mg/dL, la duración del efecto, los signos y el peso."
             )
             low_threshold = 60
-            glucose_target_description = "aproximadamente 80–250 mg/dL al valorar la duración del efecto"
+            glucose_target_description = "80–300 mg/dL durante la curva y <200 mg/dL durante la mayor parte del intervalo"
 
         if nadir < 60:
             st.error(
@@ -1180,6 +1419,71 @@ if not valid_curve.empty:
                 "revisa signos, tendencia del peso, técnica y rutina de administración con el veterinario."
             )
 
+        st.markdown("**Qué revisar sobre la dosis**")
+        if species == "Canino":
+            if nadir < 60:
+                st.warning(
+                    "AAHA 2026: un nadir <60 mg/dL o hipoglucemia confirmada requiere revisión. "
+                    "La guía contempla discutir una reducción aproximada del 10–25% si la hipoglucemia "
+                    "prolongada está confirmada sin signos; con signos, la actuación y reducción deben "
+                    "individualizarse con atención veterinaria. Confirma las lecturas bajas de CGM con "
+                    "glucómetro veterinario cuando no haya signos."
+                )
+            elif nadir > 150 and hyperglycemia_signs:
+                if current_dose > 0:
+                    small_medium_candidates = f"{current_dose + 0.5:g}–{current_dose + 1.0:g} U"
+                    medium_large_candidates = f"{current_dose + 1.0:g}–{current_dose + 2.0:g} U"
+                    st.info(
+                        f"Con nadir >150 mg/dL y signos clínicos, AAHA 2026 describe valorar con el veterinario "
+                        f"un incremento habitual según tamaño: 0,5–1 U en perros pequeños/medianos "
+                        f"(dosis resultante orientativa: {small_medium_candidates}) o 1–2 U en medianos/grandes "
+                        f"(dosis resultante orientativa: {medium_large_candidates}). Parte de las {current_dose:g} U "
+                        "anotadas; elige el contexto con el veterinario, no se aplica automáticamente. "
+                        "Repetir curva/CGM en 5–14 días."
+                    )
+                else:
+                    st.info(
+                        "Con nadir >150 mg/dL y signos, AAHA 2026 contempla valorar un aumento; en perros "
+                        "describe incrementos habituales de 0,5–1 U en pequeños/medianos y 1–2 U en grandes. "
+                        "No puede contextualizarse sin conocer la dosis y el tamaño del paciente; reevaluar en 5–14 días."
+                    )
+            elif nadir > 150:
+                st.info(
+                    "Si no hay signos y el peso está estable, AAHA 2026 recomienda mantener la pauta y "
+                    "reevaluar en 1–3 meses; si hay pérdida de peso no intencionada, ampliar la evaluación "
+                    "y considerar ajuste supervisado."
+                )
+            else:
+                st.info(
+                    "Con nadir de 60–150 mg/dL, si los signos están controlados no suele requerirse ajuste. "
+                    "Si persisten, valorar duración de acción, horario/frecuencia, CGM u otras enfermedades "
+                    "antes de aumentar la dosis."
+                )
+        else:
+            if insulin_type == "No usa insulina (SGLT2)":
+                st.info(
+                    "Esta interpretación de nadir y ajuste de dosis corresponde a insulina; no se debe aplicar "
+                    "a un gato tratado con SGLT2. Sigue el protocolo de monitorización específico del fármaco."
+                )
+            elif nadir < 60:
+                st.warning(
+                    "AAHA 2026 recomienda considerar reducir la insulina ante hipoglucemia prolongada (<60 mg/dL) "
+                    "o signos compatibles. En gatos, confirma y revisa de inmediato con el veterinario; no calcules "
+                    "un cambio basándote solo en esta curva."
+                )
+            elif nadir > 150:
+                st.info(
+                    "Si el nadir no es aceptable, AAHA 2026 plantea considerar un aumento solo con evaluación "
+                    "completa. En gatos no se recomienda convertir esta curva en una cantidad automática de U: "
+                    "considera estrés, signos, peso, tipo de insulina y CGM; las curvas en clínica no se recomiendan "
+                    "para el seguimiento rutinario."
+                )
+            else:
+                st.info(
+                    "El nadir está en el intervalo objetivo publicado. Si los signos y el peso son adecuados, "
+                    "no cambies la dosis por esta curva aislada; monitoriza al gato y revisa la evolución con su veterinario."
+                )
+
         if clinical_signs:
             st.info(
                 "Hay signos clínicos seleccionados. AAHA recomienda interpretarlos junto con la curva; "
@@ -1189,6 +1493,12 @@ if not valid_curve.empty:
             st.caption(
                 "La curva cubre menos de 10 horas; puede no mostrar todo el intervalo de acción de la insulina. "
                 "La guía describe habitualmente curvas de hasta 10–12 horas para insulinas no basales."
+            )
+        if insulin_type in {"Glargina U-300", "Degludec"}:
+            st.caption(
+                "La insulina seleccionada es basal/de acción prolongada. Una curva puntual de 10–12 h puede "
+                "no describir el perfil completo; AAHA destaca valorar monitorización continua (CGM) y "
+                "considerar el perfil específico de esta formulación."
             )
 
         st.caption(
@@ -1201,7 +1511,7 @@ else:
 with st.expander("Fuentes AAHA 2026", expanded=False):
     if species == "Felino":
         st.markdown(
-            "- [AAHA 2026, Glucose Monitoring — Cats](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-cats/section-13-glucose-monitoring/)\n"
+        "- [AAHA 2026, Glucose Monitoring — Cats](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-cats/section-13-glucose-monitoring/)\n"
             "- [AAHA 2026, Insulin Treatment and Monitoring — Cats](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-cats/section-7-insulin-treatment-and-monitoring/)"
         )
     else:
@@ -1210,6 +1520,7 @@ with st.expander("Fuentes AAHA 2026", expanded=False):
             "- [AAHA 2026, Monitoring Dogs Receiving Insulin](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-dogs/section-5-monitoring-dogs-receiving-insulin/)"
         )
     st.caption(
-        "Los objetivos dependen del tipo de insulina y del contexto del paciente. Esta herramienta ofrece "
-        "orientación de monitorización; las decisiones terapéuticas corresponden al veterinario responsable."
+        "Los objetivos y ajustes dependen de especie, tipo de insulina y contexto del paciente. La dosis "
+        "registrada sirve para contextualizar; la app no prescribe ni cambia una pauta."
     )
+
