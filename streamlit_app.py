@@ -1063,3 +1063,154 @@ st.caption(
     "La bibliografía disponible es una selección inicial, no una lista de todos los fármacos CRI."
 )
 
+
+st.divider()
+st.header("Curva de glucosa")
+st.caption(
+    "Introduce las mediciones a lo largo del intervalo entre dosis. La gráfica y el resumen se actualizan "
+    "con los datos introducidos; los valores no cambian ni recomiendan por sí mismos una pauta de insulina."
+)
+
+curve_context = st.radio(
+    "Dónde se realizó la curva",
+    ["En casa", "En clínica"],
+    horizontal=True,
+    key="glucose_curve_context",
+)
+clinical_signs = st.multiselect(
+    "Signos observados durante este periodo (opcional)",
+    ["Poliuria", "Polidipsia", "Polifagia", "Pérdida de peso", "Signos compatibles con hipoglucemia"],
+    key="glucose_curve_signs",
+)
+
+if "glucose_curve_data_v1" not in st.session_state:
+    st.session_state.glucose_curve_data_v1 = pd.DataFrame(
+        {
+            "Tiempo desde comida/insulina (h)": [0, 2, 4, 6, 8, 10, 12],
+            "Glucemia (mg/dL)": [None] * 7,
+        }
+    )
+
+curve_inputs = st.data_editor(
+    st.session_state.glucose_curve_data_v1,
+    key="glucose_curve_editor_v1",
+    num_rows="dynamic",
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Tiempo desde comida/insulina (h)": st.column_config.NumberColumn(
+            "Tiempo (h)", min_value=0.0, max_value=24.0, step=0.5, format="%.1f",
+            help="Hora 0 corresponde a la comida y administración habitual de insulina.",
+        ),
+        "Glucemia (mg/dL)": st.column_config.NumberColumn(
+            "Glucemia (mg/dL)", min_value=0.0, max_value=2000.0, step=1.0, format="%.0f",
+        ),
+    },
+)
+
+valid_curve = curve_inputs.dropna(
+    subset=["Tiempo desde comida/insulina (h)", "Glucemia (mg/dL)"]
+).copy()
+if not valid_curve.empty:
+    valid_curve = valid_curve.sort_values("Tiempo desde comida/insulina (h)")
+    duplicate_times = valid_curve["Tiempo desde comida/insulina (h)"].duplicated().any()
+    if duplicate_times:
+        st.warning("Hay horas repetidas. Asigna una hora distinta a cada medición para interpretar la curva.")
+    else:
+        st.subheader("Gráfica de glucosa")
+        st.line_chart(
+            valid_curve.set_index("Tiempo desde comida/insulina (h)")["Glucemia (mg/dL)"],
+            x_label="Tiempo desde comida/insulina (h)",
+            y_label="Glucemia (mg/dL)",
+            height=360,
+        )
+
+        nadir_row = valid_curve.loc[valid_curve["Glucemia (mg/dL)"].idxmin()]
+        nadir = float(nadir_row["Glucemia (mg/dL)"])
+        nadir_time = float(nadir_row["Tiempo desde comida/insulina (h)"])
+        duration_h = float(valid_curve["Tiempo desde comida/insulina (h)"].max())
+        metrics = st.columns(3)
+        metrics[0].metric("Nadir observado", f"{nadir:.0f} mg/dL")
+        metrics[1].metric("Hora del nadir", f"{nadir_time:g} h")
+        metrics[2].metric("Duración registrada", f"{duration_h:g} h")
+
+        st.subheader("Orientación según AAHA 2026")
+        if species == "Felino" and curve_context == "En clínica":
+            st.warning(
+                "AAHA 2026 no recomienda curvas realizadas en clínica para el seguimiento rutinario de gatos: "
+                "el estrés puede elevar la glucosa. Valora con el veterinario una curva en casa o monitorización continua (CGM)."
+            )
+        if species == "Felino":
+            st.markdown(
+                "Para gatos tratados con insulina, AAHA describe habitualmente mediciones cada 2 horas "
+                "durante hasta 10–12 horas. Como referencia para insulinas no basales, el nadir ideal "
+                "es 80–150 mg/dL; se interpreta junto con los signos, el peso y el resto del intervalo. "
+                "Si recibe un inhibidor SGLT2, esta curva no debe usarse como seguimiento rutinario sin "
+                "indicación veterinaria específica."
+            )
+            low_threshold = 80
+            glucose_target_description = "80–300 mg/dL durante la mayor parte del intervalo"
+        else:
+            st.markdown(
+                "Para perros tratados con insulina, AAHA describe mediciones antes de la dosis y luego "
+                "cada 2 horas durante hasta 10–12 horas. El nadir ideal es 80–150 mg/dL; también se "
+                "valoran el tiempo por debajo de 200 mg/dL, la duración del efecto, los signos y el peso."
+            )
+            low_threshold = 60
+            glucose_target_description = "aproximadamente 80–250 mg/dL al valorar la duración del efecto"
+
+        if nadir < 60:
+            st.error(
+                "Se registró una glucemia menor de 60 mg/dL. Contacta con el veterinario con urgencia; "
+                "si hay debilidad, temblores, desorientación, convulsiones o pérdida de conciencia, es una urgencia inmediata."
+            )
+        elif nadir < low_threshold:
+            st.warning(
+                f"El nadir ({nadir:.0f} mg/dL) queda por debajo del intervalo de referencia señalado para esta especie. "
+                "Consulta al veterinario para revisar la curva y la seguridad del tratamiento."
+            )
+        elif nadir <= 150:
+            st.success(
+                f"El nadir observado está dentro del intervalo de referencia 80–150 mg/dL. "
+                f"Valora cuánto tiempo permanece en {glucose_target_description} y si persisten signos clínicos."
+            )
+        else:
+            st.info(
+                "El nadir supera 150 mg/dL. Una curva aislada no basta para decidir un cambio: "
+                "revisa signos, tendencia del peso, técnica y rutina de administración con el veterinario."
+            )
+
+        if clinical_signs:
+            st.info(
+                "Hay signos clínicos seleccionados. AAHA recomienda interpretarlos junto con la curva; "
+                "la glucemia puntual o la curva por sí solas no determinan el control ni justifican ajustar la dosis."
+            )
+        if duration_h < 10:
+            st.caption(
+                "La curva cubre menos de 10 horas; puede no mostrar todo el intervalo de acción de la insulina. "
+                "La guía describe habitualmente curvas de hasta 10–12 horas para insulinas no basales."
+            )
+
+        st.caption(
+            "La respuesta puede variar entre días. Mantén, si es posible, la rutina habitual de comida, "
+            "insulina, premios y actividad. No ajustes ni suspendas la insulina basándote únicamente en esta gráfica."
+        )
+else:
+    st.info("Introduce al menos una hora y una medición de glucosa para generar la gráfica.")
+
+with st.expander("Fuentes AAHA 2026", expanded=False):
+    if species == "Felino":
+        st.markdown(
+            "- [AAHA 2026, Glucose Monitoring — Cats](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-cats/section-13-glucose-monitoring/)\n"
+            "- [AAHA 2026, Insulin Treatment and Monitoring — Cats](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-cats/section-7-insulin-treatment-and-monitoring/)"
+        )
+    else:
+        st.markdown(
+            "- [AAHA 2026, Glucose Monitoring — Dogs](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-dogs/section-9-glucose-monitoring/)\n"
+            "- [AAHA 2026, Monitoring Dogs Receiving Insulin](https://www.aaha.org/resources/2026-aaha-diabetes-management-guidelines-for-dogs/section-5-monitoring-dogs-receiving-insulin/)"
+        )
+    st.caption(
+        "Los objetivos dependen del tipo de insulina y del contexto del paciente. Esta herramienta ofrece "
+        "orientación de monitorización; las decisiones terapéuticas corresponden al veterinario responsable."
+    )
+
