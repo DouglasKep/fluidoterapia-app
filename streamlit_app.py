@@ -902,12 +902,13 @@ with st.container(border=True):
     st.markdown("**Fórmula**")
     st.latex(
         r"\text{Cantidad de fármaco (mL)} = "
-        r"\frac{\text{Dosis (unidad/kg/tiempo)} \times \text{Peso (kg)} \times "
-        r"\text{Duración (mismo tiempo)}}{\text{Concentración (misma unidad/mL)}}"
+        r"\frac{\text{Dosis equivalente por hora (unidad/kg/h)} \times \text{Peso (kg)} \times "
+        r"\text{Duración (h)}}{\text{Concentración (misma unidad/mL)}}"
     )
     st.caption(
-        "Dosis disponibles por hora y por minuto; si eliges /min, las horas de duración "
-        "se convierten automáticamente a minutos. Cada medicamento se calcula por separado. "
+        "Puedes introducir dosis por hora, minuto o día (incluidas mg/kg/día y µg/kg/día). "
+        "La aplicación convierte automáticamente la dosis diaria a una tasa horaria para calcular la CRI. "
+        "Cada medicamento se calcula por separado. "
         "Puedes indicar el volumen final o el ritmo "
         "deseado; con la duración se calcula el otro. Si indicas ambos, deben coincidir. "
         "El diluyente es el volumen final menos el volumen del medicamento. La dosis y la concentración deben "
@@ -920,7 +921,7 @@ if "cri_medications_v3" not in st.session_state:
     st.session_state.cri_medications_v3 = pd.DataFrame(
         [{
             "Medicamento": "",
-            "Dosis prescrita (mg/kg/h)": 0.0,
+            "Dosis prescrita": 0.0,
             "Unidad dosis": "mg/kg/h",
             "Duración (h)": 0.0,
             "Concentración": 0.0,
@@ -930,9 +931,15 @@ if "cri_medications_v3" not in st.session_state:
         }]
     )
 
+# Migrate the previous editor column name when a session survives an app update.
+if "Dosis prescrita (mg/kg/h)" in st.session_state.cri_medications_v3.columns:
+    st.session_state.cri_medications_v3 = st.session_state.cri_medications_v3.rename(
+        columns={"Dosis prescrita (mg/kg/h)": "Dosis prescrita"}
+    )
+
 cri_inputs = st.data_editor(
     st.session_state.cri_medications_v3,
-    key="cri_medications_editor_v3",
+    key="cri_medications_editor_v4",
     num_rows="dynamic",
     hide_index=True,
     width="stretch",
@@ -942,12 +949,15 @@ cri_inputs = st.data_editor(
             width=120,
             help="Nombre para identificar el fármaco; no se sugieren medicamentos.",
         ),
-        "Dosis prescrita (mg/kg/h)": st.column_config.NumberColumn(
-            "Dosis", width=80, min_value=0.0, step=0.01, format="%.6g"
+        "Dosis prescrita": st.column_config.NumberColumn(
+            "Dosis", width=80, min_value=0.0, step=0.01, format="%.6g",
+            help="Introduce el valor indicado en la prescripción y selecciona su unidad, por ejemplo mg/kg/día o µg/kg/día.",
         ),
         "Unidad dosis": st.column_config.SelectboxColumn(
             "Unidad dosis", width=95,
             options=[
+                "µg/kg/día", "mg/kg/día", "g/kg/día",
+                "UI/kg/día", "mUI/kg/día",
                 "µg/kg/h", "µg/kg/min",
                 "mg/kg/h", "mg/kg/min",
                 "g/kg/h", "g/kg/min",
@@ -990,7 +1000,7 @@ cri_results = []
 cri_errors = []
 for row_number, row in cri_inputs.iterrows():
     name = str(row.get("Medicamento", "")).strip()
-    dose = row.get("Dosis prescrita (mg/kg/h)")
+    dose = row.get("Dosis prescrita")
     dose_unit = row.get("Unidad dosis", "mg/kg/h")
     duration = row.get("Duración (h)")
     concentration = row.get("Concentración")
@@ -1034,6 +1044,11 @@ for row_number, row in cri_inputs.iterrows():
         continue
 
     dose_to_base_per_hour = {
+        "µg/kg/día": ("mass", 0.001, 1.0 / 24.0),
+        "mg/kg/día": ("mass", 1.0, 1.0 / 24.0),
+        "g/kg/día": ("mass", 1000.0, 1.0 / 24.0),
+        "UI/kg/día": ("activity", 1.0, 1.0 / 24.0),
+        "mUI/kg/día": ("activity", 0.001, 1.0 / 24.0),
         "µg/kg/h": ("mass", 0.001, 1.0),
         "µg/kg/min": ("mass", 0.001, 60.0),
         "mg/kg/h": ("mass", 1.0, 1.0),
