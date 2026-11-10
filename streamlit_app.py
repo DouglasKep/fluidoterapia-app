@@ -1547,7 +1547,7 @@ with st.sidebar:
 st.subheader("Datos clínicos y de laboratorio")
 st.caption("Completa los resultados disponibles y marca las casillas clínicas que correspondan. La creatinina actual es necesaria para clasificar ERC o LRA.")
 tab_renal, tab_urine_bp, tab_electrolytes, tab_blood, tab_clinical = st.tabs([
-    "1 · Función renal", "2 · Orina y presión", "3 · Electrolitos", "4 · Sangre y nutrición", "5 · Estado clínico"
+    "1 · Función renal", "2 · Orina, diuresis y presión", "3 · Electrolitos", "4 · Hematología y proteínas", "5 · Estado clínico y nutrición"
 ])
 with tab_renal:
     st.markdown("#### Creatinina y filtración renal")
@@ -1565,6 +1565,8 @@ with tab_urine_bp:
     with c1:
         upc = st.number_input("Cociente proteína/creatinina urinario (UPC)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
         upc_persistent = st.checkbox("Proteinuria persistente; sedimento y cultivo revisados", help="Para interpretar la proteinuria renal, confirmar persistencia y descartar sedimento activo/infección.")
+        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
+        urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 si no disponible)", min_value=0.0, value=0.0, step=0.1)
     with c2:
         sbp = st.number_input("Presión arterial sistólica (mmHg; 0 si no medida)", min_value=0, value=0, step=1)
         bp_confirmed = st.checkbox("Presión confirmada con lecturas seriadas", help="Usa mediciones estandarizadas; ACVIM recomienda descartar la primera y obtener 3–7 lecturas consecutivas.")
@@ -1592,8 +1594,6 @@ with tab_clinical:
     with c1:
         dehydration = st.checkbox("Deshidratación o hipovolemia actual")
         hypotension = st.checkbox("Hipotensión o perfusión inadecuada")
-        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
-        urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 si no disponible)", min_value=0.0, value=0.0, step=0.1)
         volume_overload = st.checkbox("Posible sobrecarga de volumen")
     with c2:
         appetite = st.checkbox("Hiporexia/anorexia")
@@ -1666,7 +1666,7 @@ def issue_category(title: str) -> str:
 
 if mode == "ERC estable":
     if not (ckd_confirmed and stable_hydrated and excluded_prepost):
-        add_issue("ERC no confirmada/estable", "Faltan datos", "No asignar estadio definitivo. Confirmar persistencia de alteraciones y excluir componente prerrenal o posrenal; repetir creatinina/SDMA en paciente estable e hidratado.", "Guía IRIS; la estadificación sigue al diagnóstico y exige estabilidad.", "Repetir analítica y evaluación renal según evolución; ante cambio agudo, usar evaluación de LRA.", "https://www.iris-kidney.com/iris-staging-system")
+        add_issue("Confirmar diagnóstico de ERC", "Pendiente de confirmar", "Antes de asignar un estadio, comprobar que los cambios renales persisten y que el paciente está estable e hidratado. Revisar causas prerrenales y posrenales; repetir creatinina/SDMA si hace falta.", "Guía IRIS: primero se confirma ERC y luego se estadifica en un paciente estable.", "Repetir creatinina/SDMA y evaluación renal según evolución; si el cambio es agudo, valorar LRA.", "https://www.iris-kidney.com/iris-staging-system")
     else:
         add_issue("ERC confirmada", f"Estadio IRIS {final_stage}", "Usar el estadio junto con signos, tendencias y complicaciones para priorizar intervenciones; estadio aislado no prescribe un fármaco.", "Guía IRIS 2026; creatinina/SDMA y evaluación individual.", "Reevaluar creatinina/SDMA y estado clínico tras cambios y longitudinalmente.", "https://www.iris-kidney.com/iris-guidelines-1")
 elif mode == "Agudización de ERC":
@@ -1679,7 +1679,7 @@ else:
 if proteinuric:
     add_issue("Proteinuria renal persistente", "Intervención a considerar", "Confirmar origen renal y persistencia; considerar dieta renal y bloqueo RAAS individualizado. No usar ACEI/ARB con deshidratación, hipovolemia, hipotensión, hiperpotasemia o LRA activa.", "Gato: consenso iCatCare 2026 para UPC >0,4; perro: ensayo Brown et al. 2020, con umbrales UPC >0,5 si azotémico y ≥1,0 si no azotémico.", "PA, creatinina y K a 1–2 semanas; UPC a 4 semanas y luego cada 3 meses si estable.", "https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", "Evidencia e indicaciones varían por especie; combinación de dos bloqueadores RAAS empeoró azotemia en 4/13 perros del ensayo.")
 elif upc >= 0.2:
-    add_issue("UPC limítrofe o no confirmada", "Repetir/interpretar", "Revisar sedimento, infección y causas asociadas; repetir UPC antes de tratar como proteinuria persistente.", "Consenso iCatCare 2026 en gatos; guía IRIS para clasificación de UPC.", "Muestras seriadas; presión y UPC en reevaluaciones.", "https://www.iris-kidney.com/iris-staging-system")
+    add_issue("UPC limítrofe o aún sin confirmar", "Revisar antes de tratar", "Revisar el sedimento y descartar infección u otras causas. Repetir la UPC antes de considerar que existe proteinuria renal persistente.", "Consenso iCatCare 2026 en gatos y guía IRIS para subestadificación por UPC.", "Repetir UPC en muestras seriadas y revisar la presión arterial.", "https://www.iris-kidney.com/iris-staging-system")
 
 if hypertensive:
     add_issue("Hipertensión sistémica", "Intervención a considerar", "Si hay daño de órgano diana, tratar sin esperar repetición; en otro caso confirmar con lecturas estandarizadas. Elegir fármaco por especie, proteinuria, volumen y comorbilidades.", "Consenso ACVIM 2018 y iCatCare 2026; ambas describen manejo individualizado.", "Reevaluar PA a 1–2 semanas tras inicio/ajuste; evitar hipotensión y vigilar creatinina/electrolitos si bloqueo RAAS.", "https://pubmed.ncbi.nlm.nih.gov/30353952/", "La dosis depende de gravedad, respuesta y comorbilidades; una medición aislada puede ser artefacto.")
@@ -1697,11 +1697,11 @@ if anemia_threshold:
 if anemia_symptomatic:
     add_issue("Anemia sintomática", "Evaluación urgente", "Valorar estabilidad hemodinámica y transfusión/soporte inmediato según signos y hematocrito; los estimulantes eritropoyéticos tardan días-semanas y no sustituyen la estabilización.", "IRIS anemia review describe transfusión como opción para anemia severa/sintomática y señala riesgos de sobrecarga y reacción transfusional.", "HCT/PCV, perfusión, PA, signos respiratorios y sobrecarga durante cualquier transfusión.", "https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", "La app no calcula transfusión ni sustituye tipaje/pruebas de compatibilidad.")
 if nausea or appetite or weight_loss:
-    add_issue("Signos gastrointestinales/nutricionales", "Tratar síntomas y causas concurrentes", "Valorar hidratación, estreñimiento, hipopotasemia, acidosis, anemia, dolor y comorbilidades. En gatos, consensos apoyan antieméticos; mirtazapina puede ayudar apetito/peso. Evitar supresión ácida sin sospecha de ulceración.", "Consenso iCatCare 2026; ensayos controlados con placebo en gatos ERC IRIS 2–3: maropitant redujo vómitos; mirtazapina redujo vómitos y aumentó apetito/peso.", "Ingesta, peso/BCS/MCS y vómitos; revisar respuesta y efectos adversos; considerar soporte enteral si hiporexia persistente.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La evidencia citada es felina; no extrapolar las dosis a perros.")
+    add_issue("Poco apetito, náuseas o vómitos", "Revisar causas y aliviar síntomas", "Revisar hidratación, estreñimiento, potasio, acidosis, anemia y dolor. En gatos hay opciones antieméticas y de apoyo al apetito; evitar supresores de ácido si no hay sospecha de ulceración.", "Consenso iCatCare 2026; ensayos en gatos con ERC IRIS 2–3 evaluaron maropitant y mirtazapina.", "Registrar ingesta, peso y vómitos; reevaluar respuesta y efectos adversos. Considerar soporte nutricional si persiste la hiporexia.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La evidencia citada es felina; no extrapolar dosis a perros.")
 if dehydration:
-    add_issue("Deshidratación/hipovolemia", "Corregir antes de ciertos fármacos", "Evaluar perfusión y causa; ajustar reposición bajo vigilancia. Evitar iniciar RAAS-inhibidores en paciente deshidratado/hipovolémico.", "IRIS AKI consensus summary y iCatCare feline CKD consensus.", "Peso, perfusión, hidratación, diuresis, PA y signos de sobrecarga.", "https://www.iris-kidney.com/new-page-5")
+    add_issue("Deshidratación o volumen circulante bajo", "Corregir y reevaluar", "Valorar perfusión y causa, y corregir con vigilancia veterinaria. La deshidratación puede cambiar la interpretación renal y aumentar el riesgo de algunos fármacos, como los bloqueadores RAAS.", "Consenso IRIS para LRA y consenso iCatCare para ERC felina.", "Controlar peso, perfusión, hidratación, diuresis, presión arterial y signos de sobrecarga.", "https://www.iris-kidney.com/new-page-5")
 if oliguria_signal or volume_overload:
-    add_issue("Oliguria/anuria o sobrecarga", "Urgencia", "No aumentar fluidos automáticamente. Revaluar balance y perfusión con urgencia; valorar UCI/nefrología y terapia renal sustitutiva si procede.", "Consenso IRIS LRA; exceso de fluidos puede causar sobrecarga potencialmente mortal.", "Diuresis, peso, balance y exploración al menos dos veces al día en hospital.", "https://www.iris-kidney.com/new-page-5")
+    add_issue("Diuresis muy baja o posible sobrecarga de líquidos", "Requiere valoración urgente", "No aumentes los fluidos automáticamente. Hace falta reevaluar perfusión y balance de líquidos; el equipo veterinario puede valorar hospitalización, especialista renal o terapia de reemplazo renal.", "Consenso IRIS para LRA; la sobrecarga de líquidos puede ser grave.", "En hospital, vigilar diuresis, peso, balance de líquidos y exploración al menos dos veces al día.", "https://www.iris-kidney.com/new-page-5")
 if infection or obstruction:
     add_issue("Infección u obstrucción posible", "Buscar causa tratable", "Completar urianálisis/cultivo e imagen según presentación; obstrucción urinaria requiere evaluación inmediata. No iniciar antibiótico o procedimiento automáticamente desde esta herramienta.", "IRIS recomienda diferenciar causas renales, prerrenales y posrenales antes de atribuir azotemia a ERC.", "Cultivo/imagen y respuesta clínica según diagnóstico.", "https://www.iris-kidney.com/iris-staging-system")
 if glomerular:
@@ -1747,23 +1747,30 @@ with t1:
             st.error("Criterios de valoración urgente/hospitalaria. No usar la calculadora de fluidos para forzar diuresis.")
     st.markdown("**Subestadificación:** UPC y presión deben interpretarse con mediciones repetidas; la presencia de daño de órgano diana modifica la urgencia.")
 with t2:
-    st.subheader("Problemas clínicos tratables")
-    st.caption("Las reglas resaltan problemas que requieren revisión; no sustituyen diagnóstico etiológico.")
+    st.subheader("Alertas y siguientes pasos")
+    st.caption("Cada aviso explica qué conviene revisar. Abre «Por qué aparece» para consultar la fuente y sus límites.")
     if not issues:
         st.info("No hay suficientes hallazgos ingresados para generar alertas específicas. Completa laboratorios y signos clínicos.")
     for issue in issues:
         with st.container(border=True):
-            st.markdown(f"### [{issue_category(issue['title'])}] {issue['title']} · {issue['status']}")
+            st.markdown(f"#### {issue['title']}")
+            st.caption(issue["status"])
+            st.markdown("**Siguiente paso**")
             st.write(issue["action"])
-            st.caption(f"Base: {issue['evidence']}")
-            if issue["limit"]:
-                st.caption(f"Límite/precaución: {issue['limit']}")
+            with st.expander("Por qué aparece · fuente y precauciones"):
+                st.write(issue["evidence"])
+                if issue["limit"]:
+                    st.warning(issue["limit"])
+                st.markdown(f"[Consultar fuente]({issue['source']})")
 with t3:
     st.subheader("Plan terapéutico y cálculos")
-    st.markdown("### Problemas detectados y siguiente paso")
+    st.markdown("### Resumen del plan")
+    st.caption("Pasos sugeridos a partir de los datos introducidos. Los detalles y la evidencia están en «Alertas y siguientes pasos».")
     if issues:
         for issue in issues:
-            st.markdown(f"- **{issue_category(issue['title'])} — {issue['title']}:** {issue['action']}")
+            with st.expander(f"{issue['title']} · {issue['status']}"):
+                st.write(issue["action"])
+                st.caption(f"Seguimiento: {issue['monitoring']}")
     else:
         st.info("Completa datos clínicos para construir el plan de revisión.")
 
