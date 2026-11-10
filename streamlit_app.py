@@ -1541,47 +1541,68 @@ with st.sidebar:
     ckd_confirmed = st.checkbox("ERC confirmada", value=False)
     stable_hydrated = st.checkbox("Paciente estable y adecuadamente hidratado", value=False)
     excluded_prepost = st.checkbox("Causas prerrenales y posrenales investigadas", value=False)
-    current_creat = st.number_input("Creatinina actual (mg/dL)", min_value=0.0, value=1.0, step=0.1, format="%.2f")
-    baseline_creat = st.number_input("Creatinina basal (mg/dL; 0 si desconocida)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
-    acute_48h = st.checkbox("Creatinina aumentó ≥0,3 mg/dL en 48 h")
-    sdma = st.number_input("SDMA (µg/dL; 0 si no disponible)", min_value=0.0, value=0.0, step=1.0)
     prior_stage = st.selectbox("Estadio ERC previo (si agudización)", ["No conocido", "IRIS 1", "IRIS 2", "IRIS 3", "IRIS 4"])
     st.caption("La estadificación de ERC requiere diagnóstico previo y mediciones estables, idealmente seriadas.")
 
 st.subheader("Datos clínicos y de laboratorio")
-cols = st.columns(4)
-with cols[0]:
-    upc = st.number_input("UPC", min_value=0.0, value=0.0, step=0.05, format="%.2f")
-    upc_persistent = st.checkbox("Proteinuria persistente; sedimento/cultivo revisados", help="Para UPC, IRIS define persistencia con al menos dos pruebas positivas separadas por unas dos semanas.")
-    sbp = st.number_input("PA sistólica (mmHg; 0 = no medida)", min_value=0, value=0, step=1)
-    bp_confirmed = st.checkbox("PA confirmada con lecturas seriadas", help="Registrar varias mediciones estandarizadas; ACVIM sugiere descartar la primera y obtener 3–7 lecturas consecutivas.")
-    tod = st.checkbox("Daño de órgano diana hipertensivo")
-with cols[1]:
-    phosphorus = st.number_input("Fósforo (mg/dL; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
-    usg = st.number_input("Densidad urinaria (USG; 0 = no disponible)", min_value=0.0, value=0.0, step=0.001, format="%.3f")
-    potassium = st.number_input("Potasio (mmol/L; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
-    low_k_confirmed = st.checkbox("Potasio bajo según intervalo del laboratorio")
-    high_k_confirmed = st.checkbox("Potasio alto según intervalo del laboratorio")
-    bicarbonate = st.number_input("Bicarbonato/CO₂ total (mmol/L; 0 = no disponible)", min_value=0.0, value=0.0, step=0.5)
-with cols[2]:
-    hct = st.number_input("Hematocrito (%) (0 = no disponible)", min_value=0.0, value=0.0, step=1.0)
-    anemia_symptomatic = st.checkbox("Signos compatibles con anemia clínicamente significativa (debilidad, colapso, disnea)")
-    albumin = st.number_input("Albúmina (g/dL; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
-    hypoalbuminemia_confirmed = st.checkbox("Albúmina baja según intervalo del laboratorio")
-    anemia_persistent = st.checkbox("Anemia persistente en controles")
-    appetite = st.checkbox("Hiporexia/anorexia o pérdida de peso")
-    nausea = st.checkbox("Náuseas o vómitos")
-    weight_loss = st.checkbox("Pérdida de peso o masa muscular")
-with cols[3]:
-    dehydration = st.checkbox("Deshidratación/hipovolemia actual")
-    hypotension = st.checkbox("Hipotensión o perfusión inadecuada")
-    oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
-    urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
-    volume_overload = st.checkbox("Sobrecarga de volumen sospechada/confirmada")
-    infection = st.checkbox("Infección/ pielonefritis posible")
-    obstruction = st.checkbox("Obstrucción urinaria posible")
-    glomerular = st.checkbox("Sospecha de enfermedad glomerular")
-    nephrotoxins = st.checkbox("Exposición a fármacos nefrotóxicos")
+st.caption("Completa los resultados disponibles y marca las casillas clínicas que correspondan. La creatinina actual es necesaria para clasificar ERC o LRA.")
+tab_renal, tab_urine_bp, tab_electrolytes, tab_blood, tab_clinical = st.tabs([
+    "1 · Función renal", "2 · Orina y presión", "3 · Electrolitos", "4 · Sangre y nutrición", "5 · Estado clínico"
+])
+with tab_renal:
+    st.markdown("#### Creatinina y filtración renal")
+    c1, c2 = st.columns(2)
+    with c1:
+        current_creat = st.number_input("Creatinina actual (mg/dL)", min_value=0.0, value=1.0, step=0.1, format="%.2f", help="Introduce el resultado más reciente. La clasificación IRIS usa creatinina en un paciente estable para ERC y la tendencia para LRA.")
+        baseline_creat = st.number_input("Creatinina basal (mg/dL; si se conoce)", min_value=0.0, value=0.0, step=0.1, format="%.2f", help="Usa el valor previo estable. Déjalo en 0 si no hay basal conocida.")
+        acute_48h = st.checkbox("Aumento ≥0,3 mg/dL en las últimas 48 horas")
+    with c2:
+        sdma = st.number_input("SDMA (µg/dL; 0 si no se midió)", min_value=0.0, value=0.0, step=1.0)
+        usg = st.number_input("Densidad urinaria (USG; 0 si no se midió)", min_value=0.0, value=0.0, step=0.001, format="%.3f")
+        st.info("Interpreta creatinina y SDMA junto con hidratación, masa muscular y mediciones anteriores.")
+with tab_urine_bp:
+    c1, c2 = st.columns(2)
+    with c1:
+        upc = st.number_input("Cociente proteína/creatinina urinario (UPC)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
+        upc_persistent = st.checkbox("Proteinuria persistente; sedimento y cultivo revisados", help="Para interpretar la proteinuria renal, confirmar persistencia y descartar sedimento activo/infección.")
+    with c2:
+        sbp = st.number_input("Presión arterial sistólica (mmHg; 0 si no medida)", min_value=0, value=0, step=1)
+        bp_confirmed = st.checkbox("Presión confirmada con lecturas seriadas", help="Usa mediciones estandarizadas; ACVIM recomienda descartar la primera y obtener 3–7 lecturas consecutivas.")
+        tod = st.checkbox("Daño de órgano diana posiblemente asociado a hipertensión")
+with tab_electrolytes:
+    c1, c2 = st.columns(2)
+    with c1:
+        phosphorus = st.number_input("Fósforo (mg/dL; 0 si no medido)", min_value=0.0, value=0.0, step=0.1)
+        potassium = st.number_input("Potasio (mmol/L; 0 si no medido)", min_value=0.0, value=0.0, step=0.1)
+        low_k_confirmed = st.checkbox("Potasio bajo según el intervalo del laboratorio")
+    with c2:
+        high_k_confirmed = st.checkbox("Potasio alto según el intervalo del laboratorio")
+        bicarbonate = st.number_input("Bicarbonato / CO₂ total (mmol/L; 0 si no medido)", min_value=0.0, value=0.0, step=0.5)
+with tab_blood:
+    c1, c2 = st.columns(2)
+    with c1:
+        hct = st.number_input("Hematocrito (%) (0 si no medido)", min_value=0.0, value=0.0, step=1.0)
+        anemia_persistent = st.checkbox("Anemia persistente en controles")
+        anemia_symptomatic = st.checkbox("Signos compatibles con anemia importante (debilidad, colapso o disnea)")
+    with c2:
+        albumin = st.number_input("Albúmina (g/dL; 0 si no medida)", min_value=0.0, value=0.0, step=0.1)
+        hypoalbuminemia_confirmed = st.checkbox("Albúmina baja según el intervalo del laboratorio")
+with tab_clinical:
+    c1, c2 = st.columns(2)
+    with c1:
+        dehydration = st.checkbox("Deshidratación o hipovolemia actual")
+        hypotension = st.checkbox("Hipotensión o perfusión inadecuada")
+        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
+        urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 si no disponible)", min_value=0.0, value=0.0, step=0.1)
+        volume_overload = st.checkbox("Posible sobrecarga de volumen")
+    with c2:
+        appetite = st.checkbox("Hiporexia/anorexia")
+        nausea = st.checkbox("Náuseas o vómitos")
+        weight_loss = st.checkbox("Pérdida de peso o masa muscular")
+        infection = st.checkbox("Posible infección/pielonefritis")
+        obstruction = st.checkbox("Posible obstrucción urinaria")
+        glomerular = st.checkbox("Sospecha de enfermedad glomerular")
+        nephrotoxins = st.checkbox("Exposición a fármacos nefrotóxicos")
 
 # Classification functions keep the chronic and acute components separate.
 def ckdstage(creat: float, sdma_value: float, sp: str) -> tuple[int, int | None]:
