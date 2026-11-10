@@ -1523,217 +1523,361 @@ with st.expander("Fuentes AAHA 2026", expanded=False):
         "Los objetivos y ajustes dependen de especie, tipo de insulina y contexto del paciente. La dosis "
         "registrada sirve para contextualizar; la app no prescribe ni cambia una pauta."
     )
-
-"""Apoyo de clasificación renal veterinaria; no sustituye el juicio clínico."""
+"""Apoyo clínico renal veterinario basado en guías y consensos publicados."""
+from __future__ import annotations
 import streamlit as st
 
-st.set_page_config(page_title="Clasificador renal veterinario", page_icon="🩺", layout="wide")
-st.title("🩺 Clasificador renal — perros y gatos")
-st.caption("Apoyo para ordenar datos y generar puntos de revisión clínica. No diagnostica ni prescribe.")
+st.set_page_config(page_title="Apoyo renal veterinario", page_icon="🩺", layout="wide")
+st.title("🩺 Apoyo renal veterinario — perros y gatos")
+st.caption("Clasificación, problemas tratables, opciones terapéuticas, cálculos de referencia y seguimiento.")
 st.warning(
-    "La estadificación IRIS de ERC solo se aplica después de confirmar enfermedad renal crónica en un paciente estable e hidratado. "
-    "Si los valores cambian rápidamente, prioriza la evaluación de lesión renal aguda (LRA) y causas pre/posrenales."
+    "Herramienta de apoyo para uso veterinario. No diagnostica ni prescribe automáticamente. "
+    "Las dosis son referencias publicadas, no órdenes terapéuticas: confirmar paciente, producto, ficha técnica local, "
+    "función renal, comorbilidades, interacciones y monitorización antes de usarlas."
 )
 
-with st.expander("Antes de clasificar: comprobaciones clínicas", expanded=True):
-    c1, c2 = st.columns(2)
-    with c1:
-        stable = st.checkbox("Paciente estable e hidratado; valores persistentes en mediciones seriadas")
-        ckd_confirmed = st.checkbox("ERC confirmada por evaluación clínica y datos renales persistentes")
-        excluded = st.checkbox("Se han investigado causas prerrenales y posrenales")
-    with c2:
-        acute_change = st.checkbox("Aumento de creatinina ≥0,3 mg/dL en 48 h o cambio agudo de diuresis")
-        baseline_available = st.checkbox("Hay una creatinina basal reciente para comparar")
+with st.sidebar:
+    st.header("Datos del paciente")
+    species = st.radio("Especie", ["Canino", "Felino"])
+    weight = st.number_input("Peso actual (kg)", min_value=0.1, value=5.0, step=0.1, format="%.2f")
+    mode = st.radio("Contexto", ["ERC estable", "LRA / cambio agudo", "Agudización de ERC"])
+    ckd_confirmed = st.checkbox("ERC confirmada", value=False)
+    stable_hydrated = st.checkbox("Paciente estable y adecuadamente hidratado", value=False)
+    excluded_prepost = st.checkbox("Causas prerrenales y posrenales investigadas", value=False)
+    current_creat = st.number_input("Creatinina actual (mg/dL)", min_value=0.0, value=1.0, step=0.1, format="%.2f")
+    baseline_creat = st.number_input("Creatinina basal (mg/dL; 0 si desconocida)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+    acute_48h = st.checkbox("Creatinina aumentó ≥0,3 mg/dL en 48 h")
+    sdma = st.number_input("SDMA (µg/dL; 0 si no disponible)", min_value=0.0, value=0.0, step=1.0)
+    prior_stage = st.selectbox("Estadio ERC previo (si agudización)", ["No conocido", "IRIS 1", "IRIS 2", "IRIS 3", "IRIS 4"])
+    st.caption("La estadificación de ERC requiere diagnóstico previo y mediciones estables, idealmente seriadas.")
 
-species = st.radio("Especie", ["Canino", "Felino"], horizontal=True)
-mode = st.radio("Evaluación", ["ERC estable", "LRA / cambio agudo"], horizontal=True)
+st.subheader("Datos clínicos y de laboratorio")
+cols = st.columns(4)
+with cols[0]:
+    upc = st.number_input("UPC", min_value=0.0, value=0.0, step=0.05, format="%.2f")
+    upc_persistent = st.checkbox("Proteinuria persistente; sedimento/cultivo revisados", help="Para UPC, IRIS define persistencia con al menos dos pruebas positivas separadas por unas dos semanas.")
+    sbp = st.number_input("PA sistólica (mmHg; 0 = no medida)", min_value=0, value=0, step=1)
+    bp_confirmed = st.checkbox("PA confirmada con lecturas seriadas", help="Registrar varias mediciones estandarizadas; ACVIM sugiere descartar la primera y obtener 3–7 lecturas consecutivas.")
+    tod = st.checkbox("Daño de órgano diana hipertensivo")
+with cols[1]:
+    phosphorus = st.number_input("Fósforo (mg/dL; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
+    usg = st.number_input("Densidad urinaria (USG; 0 = no disponible)", min_value=0.0, value=0.0, step=0.001, format="%.3f")
+    potassium = st.number_input("Potasio (mmol/L; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
+    low_k_confirmed = st.checkbox("Potasio bajo según intervalo del laboratorio")
+    high_k_confirmed = st.checkbox("Potasio alto según intervalo del laboratorio")
+    bicarbonate = st.number_input("Bicarbonato/CO₂ total (mmol/L; 0 = no disponible)", min_value=0.0, value=0.0, step=0.5)
+with cols[2]:
+    hct = st.number_input("Hematocrito (%) (0 = no disponible)", min_value=0.0, value=0.0, step=1.0)
+    anemia_symptomatic = st.checkbox("Signos compatibles con anemia clínicamente significativa (debilidad, colapso, disnea)")
+    albumin = st.number_input("Albúmina (g/dL; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
+    hypoalbuminemia_confirmed = st.checkbox("Albúmina baja según intervalo del laboratorio")
+    anemia_persistent = st.checkbox("Anemia persistente en controles")
+    appetite = st.checkbox("Hiporexia/anorexia o pérdida de peso")
+    nausea = st.checkbox("Náuseas o vómitos")
+    weight_loss = st.checkbox("Pérdida de peso o masa muscular")
+with cols[3]:
+    dehydration = st.checkbox("Deshidratación/hipovolemia actual")
+    hypotension = st.checkbox("Hipotensión o perfusión inadecuada")
+    oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
+    urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
+    volume_overload = st.checkbox("Sobrecarga de volumen sospechada/confirmada")
+    infection = st.checkbox("Infección/ pielonefritis posible")
+    obstruction = st.checkbox("Obstrucción urinaria posible")
+    glomerular = st.checkbox("Sospecha de enfermedad glomerular")
+    nephrotoxins = st.checkbox("Exposición a fármacos nefrotóxicos")
+
+# Classification functions keep the chronic and acute components separate.
+def ckdstage(creat: float, sdma_value: float, sp: str) -> tuple[int, int | None]:
+    if sp == "Canino":
+        c = 1 if creat < 1.4 else 2 if creat <= 2.7 else 3 if creat <= 5.0 else 4
+        s = None if sdma_value <= 0 else 1 if sdma_value <= 17 else 2 if sdma_value <= 35 else 3 if sdma_value <= 54 else 4
+    else:
+        c = 1 if creat < 1.6 else 2 if creat <= 2.8 else 3 if creat <= 5.0 else 4
+        s = None if sdma_value <= 0 else 1 if sdma_value <= 17 else 2 if sdma_value <= 25 else 3 if sdma_value <= 38 else 4
+    return c, s
+
+creat_stage, sdma_stage = ckdstage(current_creat, sdma, species)
+final_stage = max(creat_stage, sdma_stage or creat_stage)
+delta = current_creat - baseline_creat if baseline_creat > 0 else None
+acute_signal = acute_48h
+oliguria_signal = oliguria or (urine_output > 0 and urine_output < 1.0)
+if current_creat < 1.6:
+    aki_grade = "I" if acute_signal else "No asignable"
+elif current_creat <= 2.5:
+    aki_grade = "II"
+elif current_creat <= 5.0:
+    aki_grade = "III"
+elif current_creat <= 10.0:
+    aki_grade = "IV"
+else:
+    aki_grade = "V"
+
+# Issue flags with disease-specific context.
+upc_threshold = 0.5 if species == "Canino" else 0.4
+ckd_stage_for_decisions = int(prior_stage[-1]) if mode == "Agudización de ERC" and prior_stage != "No conocido" else final_stage if mode == "ERC estable" else None
+if species == "Canino":
+    proteinuria_threshold_met = ckd_stage_for_decisions is not None and ((ckd_stage_for_decisions >= 2 and upc > 0.5) or (ckd_stage_for_decisions == 1 and upc >= 1.0))
+else:
+    proteinuria_threshold_met = ckd_stage_for_decisions is not None and upc > 0.4
+proteinuric = proteinuria_threshold_met and upc_persistent and ckd_confirmed and mode != "LRA / cambio agudo"
+hypertensive = (sbp >= 160 and bp_confirmed) or tod
+severely_hypertensive = sbp >= 180 or tod
+phosphorus_stage = ckd_stage_for_decisions
+stage_eligible_for_phosphorus = phosphorus_stage is not None and mode in {"ERC estable", "Agudización de ERC"} and ckd_confirmed and (mode != "ERC estable" or stable_hydrated)
+phosphorus_target = (4.6 if species == "Canino" else 4.5) if phosphorus_stage == 2 else 5.0 if phosphorus_stage == 3 else 6.0 if phosphorus_stage == 4 else None
+hyperphos = stage_eligible_for_phosphorus and phosphorus > 0 and phosphorus_target is not None and phosphorus > phosphorus_target
+acidotic_cat = species == "Felino" and mode == "ERC estable" and ckd_confirmed and bicarbonate > 0 and bicarbonate < 16
+anemia_threshold = (hct < 30 or (hct <= 35 and anemia_persistent)) if species == "Canino" else (hct < 25 or (hct <= 28 and anemia_persistent))
+anemia_threshold = anemia_threshold and ckd_confirmed and mode != "LRA / cambio agudo"
+
+# One shared issue list is consumed by treatment and follow-up panels.
+issues: list[dict[str, str]] = []
+def add_issue(title: str, status: str, action: str, evidence: str, monitoring: str, source: str, limit: str = "") -> None:
+    issues.append({"title": title, "status": status, "action": action, "evidence": evidence, "monitoring": monitoring, "source": source, "limit": limit})
+
+def issue_category(title: str) -> str:
+    if any(word in title.lower() for word in ("urgencia", "hospitalización", "sintomática")):
+        return "Estabilización / derivación"
+    if any(word in title.lower() for word in ("infección", "obstrucción", "glomerular", "nefrotóxica", "erc no confirmada", "lra /")):
+        return "Diagnóstico / causa"
+    if "gastrointestinales" in title.lower():
+        return "Soporte sintomático / nutrición"
+    if any(word in title.lower() for word in ("confirmada", "agudización")):
+        return "Clasificación / contexto"
+    return "Complicación tratable"
 
 if mode == "ERC estable":
-    st.subheader("Datos para estadificación IRIS de ERC")
-    cols = st.columns(3)
-    with cols[0]:
-        creatinine = st.number_input("Creatinina (mg/dL)", min_value=0.0, value=1.0, step=0.1, format="%.2f")
-        sdma = st.number_input("SDMA (µg/dL; ensayo IDEXX)", min_value=0.0, value=0.0, step=1.0, help="Opcional; 0 significa no disponible.")
-        weight = st.number_input("Peso actual (kg)", min_value=0.1, value=5.0, step=0.1, format="%.2f")
-    with cols[1]:
-        upc = st.number_input("UPC", min_value=0.0, value=0.0, step=0.05, format="%.2f")
-        upc_repeat = st.checkbox("UPC persistente / sedimento urinario evaluado")
-    with cols[2]:
-        sbp = st.number_input("Presión arterial sistólica (mmHg)", min_value=0, value=0, step=1, help="0 = no medida")
-        bp_confirmed = st.checkbox("Hipertensión confirmada con lecturas seriadas")
-        tod = st.checkbox("Hay daño de órgano diana compatible con hipertensión")
-
-    if species == "Canino":
-        cr_stage = 1 if creatinine < 1.4 else 2 if creatinine <= 2.7 else 3 if creatinine <= 5.0 else 4
-        if sdma == 0:
-            sdma_stage = None
-        else:
-            sdma_stage = 1 if sdma <= 17 else 2 if sdma <= 35 else 3 if sdma <= 54 else 4
-        upc_label = "No proteinúrico" if upc < 0.2 else "Limítrofe" if upc <= 0.5 else "Proteinúrico"
-        upc_bounds = "<0,2; 0,2–0,5; >0,5"
+    if not (ckd_confirmed and stable_hydrated and excluded_prepost):
+        add_issue("ERC no confirmada/estable", "Faltan datos", "No asignar estadio definitivo. Confirmar persistencia de alteraciones y excluir componente prerrenal o posrenal; repetir creatinina/SDMA en paciente estable e hidratado.", "Guía IRIS; la estadificación sigue al diagnóstico y exige estabilidad.", "Repetir analítica y evaluación renal según evolución; ante cambio agudo, usar evaluación de LRA.", "https://www.iris-kidney.com/iris-staging-system")
     else:
-        cr_stage = 1 if creatinine < 1.6 else 2 if creatinine <= 2.8 else 3 if creatinine <= 5.0 else 4
-        if sdma == 0:
-            sdma_stage = None
-        else:
-            sdma_stage = 1 if sdma <= 17 else 2 if sdma <= 25 else 3 if sdma <= 38 else 4
-        upc_label = "No proteinúrico" if upc < 0.2 else "Limítrofe" if upc <= 0.4 else "Proteinúrico"
-        upc_bounds = "<0,2; 0,2–0,4; >0,4"
-
-    if sdma_stage is not None:
-        stage = max(cr_stage, sdma_stage)
-        if cr_stage != sdma_stage:
-            st.warning(
-                f"Creatinina y SDMA no coinciden (creatinina: estadio {cr_stage}; SDMA: estadio {sdma_stage}). "
-                "Revisar masa muscular, hidratación, tendencias y repetir ambas mediciones; IRIS aconseja considerar el estadio más alto si persiste la discrepancia."
-            )
-    else:
-        stage = cr_stage
-
-    bp_label = "No medida" if sbp == 0 else "Normotenso" if sbp < 140 else "Prehipertenso" if sbp < 160 else "Hipertenso" if sbp < 180 else "Hipertensión grave"
-    a, b, c = st.columns(3)
-    a.metric("Estadio por creatinina", f"IRIS {cr_stage}")
-    b.metric("Estadio orientativo integrado", f"IRIS {stage}")
-    c.metric("Subestadio por presión", bp_label)
-    st.write(f"**UPC:** {upc_label} · umbrales caninos/felinos: {upc_bounds} · **PA sistólica:** {sbp or 'no medida'} mmHg")
-
-    if not (stable and ckd_confirmed and excluded):
-        st.error("No presentes este resultado como estadio definitivo: faltan una o más confirmaciones de ERC estable y exclusión de causas pre/posrenales.")
-    else:
-        st.success(f"Clasificación de apoyo: ERC estable, estadio IRIS {stage}; subestadio UPC {upc_label.lower()}; presión {bp_label.lower()}.")
-
-    st.subheader("Lista de revisión terapéutica según hallazgos")
-    st.caption("Puntos de conversación con el veterinario tratante; el estadio por sí solo no determina un tratamiento.")
-    actions = []
-    if stage >= 2:
-        actions += ["Revisar tendencia de creatinina/SDMA, hidratación, apetito, peso y condición muscular.", "Valorar dieta renal y objetivos de fósforo según estadio y guía IRIS vigente."]
-    else:
-        actions += ["Investigar y documentar la causa/lesión renal que sustenta ERC estadio 1; revisar tendencias y capacidad de concentración urinaria."]
-    if upc >= (0.5 if species == "Canino" else 0.4):
-        actions.append("Confirmar que la proteinuria es persistente y renal (sedimento/infección/causas asociadas); discutir estrategia antiproteinúrica y seguimiento de creatinina, potasio y presión.")
-    elif upc >= 0.2:
-        actions.append("UPC limítrofe: repetir y seguir tendencia; no clasificar como proteinuria persistente a partir de una sola muestra.")
-    if sbp >= 160:
-        actions.append("Confirmar presión con técnica y lecturas seriadas; evaluar daño de órgano diana y priorizar manejo supervisado.")
-    elif sbp >= 140:
-        actions.append("Repetir presión arterial y documentar tendencia; interpretar con contexto clínico.")
-    actions.append("Revisar fósforo, potasio, bicarbonato/estado ácido-base, hematocrito, náuseas/vómitos, dolor y calidad de vida.")
-    actions.append("Evitar decisiones basadas en una medición aislada; definir intervalo de control individual según estadio, cambios y tratamiento.")
-    for item in actions:
-        st.markdown(f"- {item}")
-
-    st.subheader("Calculadora de dosis renal — selección veterinaria")
-    st.caption(
-        "Calcula la cantidad por toma a partir de un régimen publicado y el peso introducido. "
-        "La selección del fármaco y la pauta debe hacerla el veterinario; el cálculo no es una prescripción. "
-        "No calcula ajustes por interacciones, formulación, comorbilidades ni función renal individual."
-    )
-    if not (stable and ckd_confirmed and excluded):
-        st.warning("Completa primero las comprobaciones de ERC estable, hidratación y exclusión de causas pre/posrenales para habilitar estos cálculos.")
-    else:
-        if species == "Felino":
-            dose_options = {
-                "Telmisartán — proteinuria persistente (1 mg/kg PO cada 24 h)": (1.0, 1.0, "mg/kg cada 24 h", "Consenso iCatCare 2026; recomendado considerar en gatos no deshidratados con ERC estable y UPC persistentemente >0,4.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", True),
-                "Amlodipino — hipertensión (0,125–0,25 mg/kg PO cada 24 h)": (0.125, 0.25, "mg/kg cada 24 h", "Consenso iCatCare 2026; opción para hipertensión felina. Confirmar hipertensión con lecturas adecuadas, salvo daño de órgano diana.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", False),
-                "Telmisartán — hipertensión (2 mg/kg PO cada 24 h)": (2.0, 2.0, "mg/kg cada 24 h", "Consenso iCatCare 2026; opción para hipertensión felina. Vigilar presión, hidratación y función renal.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", True),
-            }
-        else:
-            dose_options = {
-                "Telmisartán — proteinuria (1 mg/kg PO cada 24 h; pauta de estudio IRIS)": (1.0, 1.0, "mg/kg cada 24 h", "Pauta de un estudio clínico citado por IRIS en perros con ERC y proteinuria persistente; no constituye una pauta universal. Evidencia clínica veterinaria limitada.", "https://www.iris-kidney.com/inhibition-of-the-renin-angiotensin-aldosterone-system", True),
-                "Enalapril — proteinuria (0,5 mg/kg PO cada 12 h; pauta de estudio IRIS)": (0.5, 0.5, "mg/kg cada 12 h", "Pauta comparadora de un estudio clínico citado por IRIS en perros con ERC y proteinuria persistente; no constituye una pauta universal. Vigilar creatinina, potasio e hidratación.", "https://www.iris-kidney.com/inhibition-of-the-renin-angiotensin-aldosterone-system", True),
-            }
-
-        selected = st.selectbox("Problema y régimen de referencia", list(dose_options))
-        low, high, interval, evidence_note, source_url, raas = dose_options[selected]
-        dehydrated = st.checkbox("Paciente deshidratado/hipovolémico o con ingesta/estado circulatorio inestable", key="dose_dehydrated")
-        active_aki = st.checkbox("Sospecha de LRA o creatinina en ascenso", key="dose_aki")
-        formulation = st.number_input("Concentración de la presentación (mg/mL; opcional)", min_value=0.0, value=0.0, step=0.1, format="%.2f", help="Si la presentación es comprimido/cápsula, deja 0. Confirma la concentración real del producto.")
-        eligible_indication = ("proteinuria" in selected.lower() and upc > (0.5 if species == "Canino" else 0.4) and upc_repeat) or ("hipertensión" in selected.lower() and sbp >= 160 and (bp_confirmed or tod))
-        if not eligible_indication:
-            st.warning("Los datos introducidos no confirman la indicación asociada a esta pauta. Revisa persistencia de UPC o medición de presión antes de usarla como referencia.")
-        if raas and (dehydrated or active_aki):
-            st.error("Cálculo bloqueado: no se debe extrapolar una pauta de bloqueo RAAS a un paciente deshidratado/hipovolémico o con posible LRA. Corregir y reevaluar bajo supervisión veterinaria.")
-        elif not eligible_indication:
-            st.info("Se muestra el régimen de referencia, pero no se calcula la cantidad porque falta confirmar su indicación clínica.")
-        else:
-            st.markdown(f"**Referencia:** {evidence_note} [{ 'Ver fuente' }]({source_url})")
-            st.markdown(f"**Vía e intervalo publicados:** PO, {interval}.")
-            if low == high:
-                mg_low = weight * low
-                st.metric("Cantidad calculada por toma", f"{mg_low:.3g} mg")
-                if formulation > 0:
-                    st.metric("Volumen por toma", f"{mg_low / formulation:.3g} mL")
-            else:
-                mg_low, mg_high = weight * low, weight * high
-                st.metric("Intervalo calculado por toma", f"{mg_low:.3g}–{mg_high:.3g} mg")
-                if formulation > 0:
-                    st.metric("Volumen por toma", f"{mg_low / formulation:.3g}–{mg_high / formulation:.3g} mL")
-            st.info("El cálculo es aritmético, sin redondeo a comprimidos ni ajuste de dosis. Confirmar producto, concentración, indicación, presión arterial, hidratación, creatinina, potasio e interacciones antes de cualquier uso.")
-
+        add_issue("ERC confirmada", f"Estadio IRIS {final_stage}", "Usar el estadio junto con signos, tendencias y complicaciones para priorizar intervenciones; estadio aislado no prescribe un fármaco.", "Guía IRIS 2026; creatinina/SDMA y evaluación individual.", "Reevaluar creatinina/SDMA y estado clínico tras cambios y longitudinalmente.", "https://www.iris-kidney.com/iris-guidelines-1")
+elif mode == "Agudización de ERC":
+    add_issue("Agudización de ERC", f"Estadio basal conservado: {prior_stage}; componente agudo aparte", "No reclasificar la creatinina aguda como nuevo estadio de ERC. Evaluar lesión aguda, causas desencadenantes, volemia, diuresis y complicaciones.", "IRIS distingue ERC estable de lesión renal aguda/decompensación; consenso de LRA reconoce etiología y reversibilidad variables.", "Monitorización hospitalaria según gravedad; control tras alta en pocos días y luego seguimiento renal.", "https://www.iris-kidney.com/new-page-5")
 else:
-    st.subheader("Datos para gradación orientativa de LRA (IRIS)")
-    cols = st.columns(3)
-    with cols[0]:
-        creatinine = st.number_input("Creatinina actual (mg/dL)", min_value=0.0, value=1.0, step=0.1, format="%.2f", key="aki_current")
-        baseline = st.number_input("Creatinina basal (mg/dL; 0 = no disponible)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
-    with cols[1]:
-        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
-        nonresponsive = st.checkbox("No responde a corrección de hipovolemia / no volumen-responsiva")
-    with cols[2]:
-        complications = st.multiselect("Complicaciones presentes", ["Sobrecarga de volumen", "Hiperpotasemia", "Hipertensión", "Acidosis", "Signos urémicos", "Obstrucción posible"])
-        urine_output = st.number_input("Diuresis (mL/kg/h; opcional, 0 = no disponible)", min_value=0.0, value=0.0, step=0.1)
+    add_issue("LRA / cambio agudo", f"Grado IRIS orientativo {aki_grade}", "Investigar causas prerrenales, renales y posrenales; el grado por creatinina no predice por sí solo reversibilidad ni pronóstico.", "Consenso IRIS de mejores prácticas para LRA (2024), resumen IRIS 2026.", "Diuresis, peso y balance al menos dos veces al día en hospital; electrolitos inicialmente al menos dos veces al día según consenso.", "https://www.iris-kidney.com/new-page-5")
+    if aki_grade in {"II", "III", "IV", "V"} or oliguria_signal or volume_overload or obstruction or high_k_confirmed:
+        add_issue("Urgencia / hospitalización", "Prioridad alta", "Valoración hospitalaria y monitorización intensiva. Considerar consulta de nefrología/UCI; valorar terapia de reemplazo renal si complicaciones no se controlan médicamente.", "Consenso IRIS LRA; práctica basada en consenso y evidencia veterinaria limitada.", "Vigilancia de diuresis, balance, peso, PA, potasio, creatinina y ácido-base.", "https://www.iris-kidney.com/new-page-5")
 
-    delta = creatinine - baseline if baseline > 0 else None
-    if creatinine < 1.6:
-        grade = "I" if ((delta is not None and delta >= 0.3) or acute_change) else "No asignable con estos datos"
-    elif creatinine <= 2.5:
-        grade = "II"
-    elif creatinine <= 5.0:
-        grade = "III"
-    elif creatinine <= 10.0:
-        grade = "IV"
+if proteinuric:
+    add_issue("Proteinuria renal persistente", "Intervención a considerar", "Confirmar origen renal y persistencia; considerar dieta renal y bloqueo RAAS individualizado. No usar ACEI/ARB con deshidratación, hipovolemia, hipotensión, hiperpotasemia o LRA activa.", "Gato: consenso iCatCare 2026 para UPC >0,4; perro: ensayo Brown et al. 2020, con umbrales UPC >0,5 si azotémico y ≥1,0 si no azotémico.", "PA, creatinina y K a 1–2 semanas; UPC a 4 semanas y luego cada 3 meses si estable.", "https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", "Evidencia e indicaciones varían por especie; combinación de dos bloqueadores RAAS empeoró azotemia en 4/13 perros del ensayo.")
+elif upc >= 0.2:
+    add_issue("UPC limítrofe o no confirmada", "Repetir/interpretar", "Revisar sedimento, infección y causas asociadas; repetir UPC antes de tratar como proteinuria persistente.", "Consenso iCatCare 2026 en gatos; guía IRIS para clasificación de UPC.", "Muestras seriadas; presión y UPC en reevaluaciones.", "https://www.iris-kidney.com/iris-staging-system")
+
+if hypertensive:
+    add_issue("Hipertensión sistémica", "Intervención a considerar", "Si hay daño de órgano diana, tratar sin esperar repetición; en otro caso confirmar con lecturas estandarizadas. Elegir fármaco por especie, proteinuria, volumen y comorbilidades.", "Consenso ACVIM 2018 y iCatCare 2026; ambas describen manejo individualizado.", "Reevaluar PA a 1–2 semanas tras inicio/ajuste; evitar hipotensión y vigilar creatinina/electrolitos si bloqueo RAAS.", "https://pubmed.ncbi.nlm.nih.gov/30353952/", "La dosis depende de gravedad, respuesta y comorbilidades; una medición aislada puede ser artefacto.")
+if hyperphos:
+    target = f"<{phosphorus_target:.1f}"
+    add_issue("Hiperfosfatemia", "Por encima del objetivo orientativo", f"Revisar dieta terapéutica renal y fósforo dietario; objetivo orientativo para {species.lower()}, estadio {phosphorus_stage}: {target} mg/dL. Si persiste fuera de objetivo tras 4–6 semanas de dieta renal, valorar quelante mezclado con comidas; seleccionar agente según calcio, ingesta y tolerancia.", "Guías IRIS por especie/estadio; consenso iCatCare 2026 para gatos.", "Fósforo y calcio 4–6 semanas tras cambio dietario/quelante, luego cada 12 semanas cuando estable.", "https://www.iris-kidney.com/iris-guidelines-1", "No se calcula dosis de quelante en esta versión: se titula a fósforo y cantidad ingerida; confirmar dosis en documento IRIS vigente por especie.")
+if low_k_confirmed:
+    add_issue("Hipopotasemia", "Corregir causa y valorar reposición", "En gatos estables, el consenso describe dieta con más K y suplementación oral con gluconato/citrato potásico; acidosis favorece valorar citrato. Hipopotasemia grave/decompensada requiere hospitalización y KCl IV monitorizado. En perros no se genera dosis renal con esta fuente.", "Consenso iCatCare 2026 para gatos; recomendación de consenso, respuesta individual.", "Repetir K y función renal tras iniciar o ajustar; vigilar debilidad, ventroflexión cervical, arritmia y tránsito intestinal.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La pauta felina citada es mEq/gato, no mg/kg. No usar si K alto o no se dispone de control analítico.")
+if high_k_confirmed:
+    add_issue("Hiperpotasemia", "Prioridad de evaluación", "Confirmar muestra/hemólisis; revisar función renal, diuresis, medicación y obstrucción. Valorar ECG y tratamiento urgente según concentración, cambios electrocardiográficos y estado clínico. La app no calcula medidas de emergencia.", "Consenso IRIS LRA; hiperpotasemia grave o no controlada puede requerir terapia renal sustitutiva.", "Potasio y ECG según gravedad; repetir tras cada intervención.", "https://www.iris-kidney.com/new-page-5", "No existe un umbral único independiente del laboratorio, ECG y presentación.")
+if acidotic_cat:
+    add_issue("Acidosis metabólica felina", "Valorar corrección", "Revisar dieta renal y causa; el consenso permite considerar citrato potásico o bicarbonato oral para mantener HCO₃⁻ >16 mmol/L. Si hiperpotasemia, evitar la opción con potasio.", "Consenso iCatCare 2026; la pauta se apoya en consenso y literatura clínica, no en una comparación robusta de ensayos.", "HCO₃⁻, K, estado ácido-base y tolerancia digestiva tras ajuste.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La corrección debe basarse en gasometría/química y causa; evitar alcalosis y carga de sodio/potasio inapropiada.")
+if anemia_threshold:
+    add_issue("Anemia asociada a ERC (posible)", "Investigar y valorar tratamiento", "IRIS 2026 sugiere tratar perros con HCT <30% o anemia persistente 30–35%; gatos <25% o persistente 25–28%. Antes de ESA/HIF-PHI buscar hierro bajo, sangrado, inflamación/infección, parásitos y otras causas.", "Guía IRIS 2026. La guía enumera opciones, pero el umbral no demuestra por sí solo causalidad renal.", "HCT/PCV y PA antes de cada dosis durante inducción; en mantenimiento cada 1–3 meses, además de hierro y efectos adversos.", "https://www.iris-kidney.com/iris-guidelines-1", "Dosis felina de darbepoetina se ofrece como pauta de consenso; perros: no se calcula en esta versión al no integrar una pauta IRIS 2026 específica verificada.")
+if anemia_symptomatic:
+    add_issue("Anemia sintomática", "Evaluación urgente", "Valorar estabilidad hemodinámica y transfusión/soporte inmediato según signos y hematocrito; los estimulantes eritropoyéticos tardan días-semanas y no sustituyen la estabilización.", "IRIS anemia review describe transfusión como opción para anemia severa/sintomática y señala riesgos de sobrecarga y reacción transfusional.", "HCT/PCV, perfusión, PA, signos respiratorios y sobrecarga durante cualquier transfusión.", "https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", "La app no calcula transfusión ni sustituye tipaje/pruebas de compatibilidad.")
+if nausea or appetite or weight_loss:
+    add_issue("Signos gastrointestinales/nutricionales", "Tratar síntomas y causas concurrentes", "Valorar hidratación, estreñimiento, hipopotasemia, acidosis, anemia, dolor y comorbilidades. En gatos, consensos apoyan antieméticos; mirtazapina puede ayudar apetito/peso. Evitar supresión ácida sin sospecha de ulceración.", "Consenso iCatCare 2026; ensayos controlados con placebo en gatos ERC IRIS 2–3: maropitant redujo vómitos; mirtazapina redujo vómitos y aumentó apetito/peso.", "Ingesta, peso/BCS/MCS y vómitos; revisar respuesta y efectos adversos; considerar soporte enteral si hiporexia persistente.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La evidencia citada es felina; no extrapolar las dosis a perros.")
+if dehydration:
+    add_issue("Deshidratación/hipovolemia", "Corregir antes de ciertos fármacos", "Evaluar perfusión y causa; ajustar reposición bajo vigilancia. Evitar iniciar RAAS-inhibidores en paciente deshidratado/hipovolémico.", "IRIS AKI consensus summary y iCatCare feline CKD consensus.", "Peso, perfusión, hidratación, diuresis, PA y signos de sobrecarga.", "https://www.iris-kidney.com/new-page-5")
+if oliguria_signal or volume_overload:
+    add_issue("Oliguria/anuria o sobrecarga", "Urgencia", "No aumentar fluidos automáticamente. Revaluar balance y perfusión con urgencia; valorar UCI/nefrología y terapia renal sustitutiva si procede.", "Consenso IRIS LRA; exceso de fluidos puede causar sobrecarga potencialmente mortal.", "Diuresis, peso, balance y exploración al menos dos veces al día en hospital.", "https://www.iris-kidney.com/new-page-5")
+if infection or obstruction:
+    add_issue("Infección u obstrucción posible", "Buscar causa tratable", "Completar urianálisis/cultivo e imagen según presentación; obstrucción urinaria requiere evaluación inmediata. No iniciar antibiótico o procedimiento automáticamente desde esta herramienta.", "IRIS recomienda diferenciar causas renales, prerrenales y posrenales antes de atribuir azotemia a ERC.", "Cultivo/imagen y respuesta clínica según diagnóstico.", "https://www.iris-kidney.com/iris-staging-system")
+if glomerular:
+    add_issue("Sospecha de enfermedad glomerular", "Confirmar etiología antes de terapias específicas", "Cuantificar proteinuria, revisar albúmina, presión, sedimento, cultivo y causas infecciosas/sistémicas; valorar imagen, derivación y biopsia según riesgo. No iniciar inmunosupresión empírica desde esta regla.", "Consensos IRIS/ACVIM sobre enfermedad glomerular; la selección de inmunosupresión depende de diagnóstico etiológico y riesgo-beneficio.", "UPC, albúmina, PA, función renal y complicaciones trombóticas según caso.", "https://www.iris-kidney.com/iris-guidelines-1", "Esta versión no calcula inmunosupresores ni antitrombóticos por falta de indicación etiológica individual verificable.")
+if hypoalbuminemia_confirmed:
+    albumin_text = f"Albúmina medida: {albumin:.2f} g/dL. " if albumin > 0 else ""
+    add_issue("Hipoalbuminemia", "Investigar causa y riesgo de complicaciones", albumin_text + "Correlacionar con UPC, pérdidas gastrointestinales, función hepática e inflamación; si coexiste proteinuria marcada, valorar riesgo trombótico individual. No iniciar antitrombótico automáticamente.", "IRIS/ACVIM glomerular kidney disease recommendations; riesgo y tratamiento dependen de diagnóstico y paciente.", "Albúmina, UPC, edema/derrame y signos de tromboembolismo según evolución.", "https://www.iris-kidney.com/iris-guidelines-1", "No hay una dosis antitrombótica renal universal implementada; se requiere valoración individual y evidencia de indicación.")
+if nephrotoxins:
+    add_issue("Exposición nefrotóxica", "Revisión farmacológica prioritaria", "Revisar indicación, exposición, alternativas, aclaramiento renal e interacciones; suspender/cambiar solo por decisión del veterinario responsable.", "Consenso IRIS LRA; estudios y guías de prevención de nefrotoxicidad.", "Creatinina y diuresis; en riesgo hospitalario, monitorización al menos diaria.", "https://www.iris-kidney.com/new-page-2")
+
+# Clinical blocks.
+t1, t2, t3, t4, t5 = st.tabs(["1 · Clasificación", "2 · Problemas", "3 · Plan y dosis", "4 · Evidencia", "5 · Seguimiento"])
+with t1:
+    st.subheader("Diagnóstico y clasificación")
+    if mode == "ERC estable":
+        if species == "Canino":
+            cr_stage = 1 if current_creat < 1.4 else 2 if current_creat <= 2.7 else 3 if current_creat <= 5.0 else 4
+            sdma_thresholds = "≤17 / 18–35 / 36–54 / >54 µg/dL"
+        else:
+            cr_stage = 1 if current_creat < 1.6 else 2 if current_creat <= 2.8 else 3 if current_creat <= 5.0 else 4
+            sdma_thresholds = "≤17 / 18–25 / 26–38 / >38 µg/dL"
+        cr_ranges = "<1,4 / 1,4–2,7 / 2,8–5,0 / >5,0 mg/dL" if species == "Canino" else "<1,6 / 1,6–2,8 / 2,9–5,0 / >5,0 mg/dL"
+        st.markdown(f"- Estadio por creatinina: **IRIS {cr_stage}**. Cortes I–IV de creatinina: {cr_ranges}. Cortes de SDMA por estadio: {sdma_thresholds}.")
+        if sdma > 0:
+            st.markdown(f"- Estadio por SDMA: **IRIS {sdma_stage}**; clasificación de apoyo conservadora: **IRIS {final_stage}**.")
+            if sdma_stage != cr_stage:
+                st.warning("Creatinina y SDMA discrepan. Considerar masa muscular, ensayo de laboratorio, hidratación y repetir en 2–4 semanas; si persiste, IRIS aconseja considerar el estadio superior.")
+        if ckd_confirmed and stable_hydrated and excluded_prepost:
+            st.success(f"ERC estable: estadio IRIS {final_stage} · UPC {'proteinúrico' if proteinuric else 'limítrofe/no confirmado' if upc >= 0.2 else 'no proteinúrico'} · PA {'hipertensa' if hypertensive else 'sin hipertensión confirmada'}.")
+        else:
+            st.error("La app no valida un estadio final: confirma ERC, estabilidad/hidratación y exclusión de causas prerrenales/posrenales.")
+        st.caption("En perros, estadio 2 llega hasta 2,7 mg/dL en la revisión IRIS vigente. En gatos, estadio 2 llega hasta 2,8 mg/dL. Estadio 1 requiere evidencia renal adicional; el valor aislado no diagnostica ERC.")
+        if usg > 0:
+            st.caption(f"USG ingresada: {usg:.3f}. Interpretar con hidratación, glucosuria, fármacos y contexto; por sí sola no confirma ERC.")
     else:
-        grade = "V"
-
-    x, y, z = st.columns(3)
-    x.metric("Grado IRIS LRA orientativo", grade)
-    y.metric("Cambio vs basal", f"+{delta:.2f} mg/dL" if delta is not None else "Sin basal")
-    z.metric("Diuresis", f"{urine_output:g} mL/kg/h" if urine_output > 0 else "No registrada")
-
-    if grade == "No asignable con estos datos":
-        st.info("La creatinina aislada no basta para confirmar LRA grado I. Considera tendencia, diuresis, urianálisis y contexto; el grado no identifica la causa.")
-    elif grade == "I":
-        st.warning("Compatible con posible LRA no azotémica si existe aumento agudo documentado u otros criterios. Requiere investigar causa y seguimiento estrecho.")
+        st.write(f"- Creatinina basal: {baseline_creat:g} mg/dL; actual: {current_creat:.2f} mg/dL; cambio: {delta:+.2f} mg/dL" if delta is not None else f"- Sin basal registrada; creatinina actual {current_creat:.2f} mg/dL.")
+        st.write(f"- Cambio ≥0,3 mg/dL en 48 h: **{'confirmado' if acute_signal else 'no confirmado'}**" + (f"; diferencia aritmética vs basal {delta:+.2f} mg/dL." if delta is not None else ".") + f" Grado LRA orientativo por creatinina: **{aki_grade}**.")
+        if mode == "Agudización de ERC":
+            st.info(f"Conservar el estadio basal {prior_stage}; registrar por separado el componente agudo. Un grado LRA no sustituye la etiología ni estima reversibilidad.")
+        if aki_grade == "I" and not acute_signal:
+            st.warning("No hay criterio de cambio agudo documentado para asignar grado I. Revisar tendencia, diuresis y urianálisis.")
+        if oliguria_signal or volume_overload or obstruction or high_k_confirmed or aki_grade in {"II", "III", "IV", "V"}:
+            st.error("Criterios de valoración urgente/hospitalaria. No usar la calculadora de fluidos para forzar diuresis.")
+    st.markdown("**Subestadificación:** UPC y presión deben interpretarse con mediciones repetidas; la presencia de daño de órgano diana modifica la urgencia.")
+with t2:
+    st.subheader("Problemas clínicos tratables")
+    st.caption("Las reglas resaltan problemas que requieren revisión; no sustituyen diagnóstico etiológico.")
+    if not issues:
+        st.info("No hay suficientes hallazgos ingresados para generar alertas específicas. Completa laboratorios y signos clínicos.")
+    for issue in issues:
+        with st.container(border=True):
+            st.markdown(f"### [{issue_category(issue['title'])}] {issue['title']} · {issue['status']}")
+            st.write(issue["action"])
+            st.caption(f"Base: {issue['evidence']}")
+            if issue["limit"]:
+                st.caption(f"Límite/precaución: {issue['limit']}")
+with t3:
+    st.subheader("Plan terapéutico y cálculos")
+    st.markdown("### Problemas detectados y siguiente paso")
+    if issues:
+        for issue in issues:
+            st.markdown(f"- **{issue_category(issue['title'])} — {issue['title']}:** {issue['action']}")
     else:
-        st.error(f"LRA azotémica grado {grade}: valoración hospitalaria y monitorización intensiva suelen ser necesarias. El grado no determina por sí solo reversibilidad ni pronóstico.")
-    if oliguria or (urine_output > 0 and urine_output < 1):
-        st.error("Oliguria/anuria: urgencia veterinaria. No aumentes fluidos de forma automática; balance, peso, diuresis y perfusión deben monitorizarse estrechamente.")
-    if "Sobrecarga de volumen" in complications:
-        st.error("Sobrecarga de volumen: detener la administración automática y reevaluar de inmediato; puede ser potencialmente mortal.")
-    if "Obstrucción posible" in complications:
-        st.error("Descartar obstrucción posrenal de forma urgente.")
+        st.info("Completa datos clínicos para construir el plan de revisión.")
 
-    st.subheader("Prioridades de revisión en LRA")
-    for item in [
-        "Buscar causas prerrenales, renales y posrenales; revisar exposición a nefrotóxicos y medicación completa.",
-        "Registrar balance hídrico, peso, diuresis y presión arterial; reevaluar electrolitos y estado ácido-base con frecuencia según gravedad.",
-        "Corregir hipovolemia si existe, pero evitar sobrecarga y diuresis forzada; ajustar fluidos a pérdidas y respuesta monitorizada.",
-        "Revisar indicaciones de derivación a cuidados intensivos/nefrología y terapia de reemplazo renal cuando el manejo convencional no controla complicaciones.",
-        "Al alta, programar recontrol temprano y vigilancia renal longitudinal; la recuperación puede prolongarse semanas o meses.",
-    ]:
-        st.markdown(f"- {item}")
+    st.markdown("### Calculadora de pautas publicadas")
+    st.caption("Elige un régimen que corresponda a un problema confirmado. Se calcula cantidad por toma; no se redondea ni se transforma en receta.")
+    options: dict[str, dict] = {}
+    common_note = "Confirmación veterinaria, ficha técnica local, producto y monitorización requeridos."
+    if species == "Felino":
+        options = {
+            "Telmisartán · proteinuria": dict(low=1, high=1, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="proteinuria", raas=True, source="Consenso iCatCare 2026; dosis 1 mg/kg/día para proteinuria felina.", evidence="Consenso de guía con referencias a ensayos clínicos; la publicación no asigna grado GRADE a esta dosis.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA, creatinina y potasio a 1–2 semanas; UPC a 4 semanas; luego cada 3 meses si estable."),
+            "Benazepril · proteinuria": dict(low=.25, high=.5, unit="mg/kg", interval="PO cada 12 h", kind="mass", issue="proteinuria", raas=True, source="Consenso iCatCare 2026: opción ACEI felina para proteinuria.", evidence="Consenso con datos de estudios clínicos; no se asigna nivel formal de certeza en la tabla de dosis.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA, creatinina y potasio a 1–2 semanas; UPC a 4 semanas."),
+            "Amlodipino · hipertensión": dict(low=.125, high=.25, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=False, source="Consenso iCatCare 2026; opción felina de primera línea según gravedad y respuesta.", evidence="Guía/consenso; la dosis se apoya en estudios clínicos felinos.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA a 1–2 semanas; vigilar hipotensión, debilidad, taquicardia y edema periférico."),
+            "Telmisartán · hipertensión": dict(low=2, high=2, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=True, source="Consenso iCatCare 2026; opción felina para hipertensión.", evidence="Guía/consenso basada en ensayos clínicos de hipertensión felina.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA, creatinina y potasio a 1–2 semanas; vigilar hipotensión y empeoramiento de azotemia."),
+            "Maropitant · náuseas/vómitos": dict(low=1, high=1, unit="mg/kg", interval="PO/SC/IV cada 24 h", kind="mass", issue="gastro", raas=False, source="Consenso iCatCare 2026; ensayo controlado en gatos con ERC IRIS 2–3 redujo vómitos.", evidence="Ensayo clínico placebo-controlado citado en consenso; beneficio probado para vómito en la población estudiada.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Vómitos, apetito, hidratación y dolor local si SC."),
+            "Mirtazapina · apetito/náusea": dict(low=2, high=2, unit="mg/gato", interval="PO o transdérmica cada 24 h; considerar cada 48 h en ERC avanzada", kind="fixed", issue="gastro", raas=False, source="Consenso iCatCare 2026: 2 mg/gato; intervalo q48h puede reducir acumulación en ERC avanzada.", evidence="Ensayos controlados citados por consenso mostraron menor vómito y aumento de apetito/peso; la frecuencia q48h se apoya en farmacocinética/experiencia clínica.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Apetito, peso, vocalización/agitación y reacción cutánea si transdérmica."),
+            "Citrato potásico · hipopotasemia": dict(low=1, high=4, unit="mEq/gato", interval="PO cada 12 h; ajustar a respuesta", kind="fixed", issue="potassium", raas=False, source="Consenso iCatCare 2026: 1–4 mEq/gato q12h en pacientes estables con hipopotasemia moderada-severa.", evidence="Recomendación de consenso; titulación por respuesta, no ensayo dosis-respuesta robusto.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Potasio, creatinina y signos neuromusculares/GI; evitar si hiperpotasemia."),
+            "Citrato potásico · acidosis": dict(low=40, high=75, unit="mg/kg", interval="PO cada 12 h", kind="mass", issue="acidosis", raas=False, source="Consenso iCatCare 2026: citrato potásico 40–75 mg/kg q12h para mantener HCO₃⁻ >16 mmol/L.", evidence="Recomendación de consenso; la suplementación está en evaluación.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="HCO₃⁻/CO₂ total, potasio y estado ácido-base; evitar si hiperpotasemia."),
+            "Bicarbonato sódico · acidosis": dict(low=10, high=12, unit="mg/kg", interval="PO cada 8–12 h", kind="mass", issue="acidosis", raas=False, source="Consenso iCatCare 2026: bicarbonato sódico 10–12 mg/kg q8–12h para mantener HCO₃⁻ >16 mmol/L.", evidence="Recomendación de consenso; no se asigna grado formal de certeza.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="HCO₃⁻/CO₂ total, sodio, potasio y estado ácido-base."),
+            "Darbepoetina · anemia renal": dict(low=.75, high=1, unit="µg/kg", interval="SC cada 7 días durante inducción; espaciar según PCV bajo control veterinario", kind="mass", issue="anemia", raas=False, source="Consenso iCatCare 2026: dosis inicial felina 0,75–1 µg/kg semanal hasta PCV alrededor de 30%; IRIS 2026 define umbrales de intervención más bajos.", evidence="Consenso; respaldado por estudios clínicos de cohorte y práctica clínica, con riesgo de hipertensión y anticuerpos anti-EPO.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA y PCV antes de cada dosis en inducción; hierro; luego cada 1–3 meses al estabilizar."),
+        }
+    else:
+        options = {
+            "Telmisartán · proteinuria": dict(low=1, high=1, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="proteinuria", raas=True, source="Brown et al., 2020, doble ciego aleatorizado: 39 perros con ERC/proteinuria; umbral UPC >0,5 si azotémico o ≥1,0 si no azotémico.", evidence="Ensayo clínico aleatorizado; 20 telmisartán vs 19 enalapril, 120 días. La combinación produjo azotemia clínicamente relevante en 4/13; no combinar automáticamente.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", monitor="Creatinina, potasio, PA e hidratación a 1–2 semanas; UPC a 4 semanas y luego según respuesta."),
+            "Enalapril · proteinuria": dict(low=.5, high=.5, unit="mg/kg", interval="PO cada 12 h", kind="mass", issue="proteinuria", raas=True, source="Brown et al., 2020, ensayo clínico canino de proteinuria renal persistente; enalapril fue el comparador activo.", evidence="Ensayo clínico aleatorizado de un centro (n=39 total); no usar combinación ACEI+ARB como si fuese segura: empeoramiento de azotemia en 4/13 perros combinados.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", monitor="Creatinina, potasio, PA e hidratación a 1–2 semanas; UPC a 4 semanas."),
+            "Telmisartán · hipertensión": dict(low=1, high=1, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=True, source="Consenso ACVIM 2018: dosis de referencia en hipertensión canina.", evidence="Consenso con evidencia clínica veterinaria limitada; individualizar por proteinuria, PA, hidratación y respuesta.", url="https://pubmed.ncbi.nlm.nih.gov/30353952/", monitor="PA, creatinina, potasio e hidratación 1–2 semanas tras inicio/ajuste."),
+            "Darbepoetina · anemia renal": dict(low=.45, high=1, unit="µg/kg", interval="SC cada 7 días durante inducción; espaciar tras respuesta", kind="mass", issue="anemia", raas=False, source="IRIS CKD anemia review: 0,45–1 µg/kg SC semanal; cohorte retrospectiva de 33 perros, 85% alcanzó PCV ≥30%.", evidence="Estudio observacional retrospectivo, no ensayo aleatorizado. IRIS informa hipertensión en 24/25 perros de la cohorte que requirieron tratamiento; revisar autorización local.", url="https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", monitor="PA y HCT/PCV antes de cada dosis en inducción; hierro; vigilar hipertensión, hiperpotasemia y signos neurológicos."),
+            "Amlodipino · hipertensión grave": dict(low=.1, high=.5, unit="mg/kg", interval="PO cada 24 h; solo como parte del plan de hipertensión grave", kind="mass", issue="hypertension_severe", raas=False, source="Consenso ACVIM 2018: en perros con SBP >200 mmHg puede iniciarse RAAS-inhibidor más bloqueador de canal de calcio; intervalo de dosis citado 0,1–0,5 mg/kg q24h.", evidence="Consenso ACVIM; evidencia en hipertensión canina limitada y decisiones individualizadas.", url="https://pubmed.ncbi.nlm.nih.gov/30353952/", monitor="PA seriada estrecha y revisión de perfusión, hidratación y creatinina."),
+        }
+
+    selected = st.selectbox("Pauta publicada (la selección no equivale a prescripción)", list(options))
+    regimen = options[selected]
+    calculate_reference = st.checkbox("Calcular esta pauta de referencia (revisión veterinaria confirmada)")
+    if species == "Canino" and selected.startswith("Amlodipino"):
+        raas_plan_confirmed = st.checkbox("El plan clínico ya contempla el bloqueador RAAS concomitante para hipertensión canina grave")
+    else:
+        raas_plan_confirmed = True
+    formulation = st.number_input("Concentración (mg/mL o µg/mL según unidad; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.3f")
+    mEq_conc = st.number_input("Concentración de potasio (mEq/mL; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+    if regimen["issue"] == "proteinuria":
+        eligible = proteinuric
+    elif regimen["issue"] == "hipertensión":
+        eligible = hypertensive
+    elif regimen["issue"] == "hypertension_severe":
+        eligible = sbp > 200 and (bp_confirmed or tod) and raas_plan_confirmed
+    elif regimen["issue"] == "gastro":
+        eligible = nausea or appetite or weight_loss
+    elif regimen["issue"] == "potassium":
+        eligible = low_k_confirmed and species == "Felino"
+    elif regimen["issue"] == "acidosis":
+        eligible = species == "Felino" and bicarbonate > 0 and bicarbonate < 16
+    else:
+        eligible = anemia_threshold and hct > 0
+    blocked = (mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration) or (regimen["raas"] and (high_k_confirmed or hypotension or nephrotoxins)) or (selected.startswith("Citrato") and (high_k_confirmed or potassium <= 0)) or (regimen["issue"] == "potassium" and (not low_k_confirmed or potassium <= 0)) or (regimen["issue"] == "anemia" and anemia_symptomatic)
+    if not calculate_reference:
+        st.info("Selecciona la pauta adecuada y confirma que quieres ver el cálculo aritmético; la aplicación no propone ni inicia el tratamiento automáticamente.")
+    elif not eligible:
+        st.warning("No se cumplen los datos de elegibilidad registrados para esta indicación; no se calcula una dosis.")
+    elif blocked:
+        st.error("Cálculo bloqueado por inestabilidad, anemia sintomática, deshidratación/hipovolemia, hipotensión, posible LRA, exposición nefrotóxica o riesgo de potasio. Resolver/revaluar antes de considerar la pauta.")
+    else:
+        st.markdown(f"**Fuente/tipo:** {regimen['source']}  \n**Evidencia:** {regimen['evidence']}  \n**Monitorización:** {regimen['monitor']}")
+        regimen_interval = regimen["interval"]
+        if species == "Felino" and selected.startswith("Mirtazapina"):
+            regimen_interval = "PO o transdérmica cada 48 h como referencia por ERC avanzada" if final_stage >= 3 else "PO o transdérmica cada 24 h como referencia inicial"
+        st.markdown(f"**Vía/intervalo publicado:** {regimen_interval}")
+        if regimen["kind"] == "fixed":
+            quantity_low, quantity_high = regimen["low"], regimen["high"]
+            amount = f"{quantity_low:g} {regimen['unit']} por toma" if quantity_low == quantity_high else f"{quantity_low:g}–{quantity_high:g} {regimen['unit']} por toma"
+            if mEq_conc > 0 and regimen["unit"] == "mEq/gato":
+                amount += f" · volumen aritmético {quantity_low/mEq_conc:.3g}–{quantity_high/mEq_conc:.3g} mL"
+            elif formulation > 0 and regimen["unit"] == "mg/gato":
+                amount += f" · volumen aritmético {quantity_low/formulation:.3g} mL"
+        else:
+            quantity_low = weight * regimen["low"]
+            quantity_high = weight * regimen["high"]
+            amount = f"{quantity_low:.3g}–{quantity_high:.3g} {regimen['unit'].split('/')[0]} por toma"
+            if formulation > 0:
+                amount += f" · volumen aritmético {quantity_low/formulation:.3g}–{quantity_high/formulation:.3g} mL"
+        st.metric("Cantidad calculada", amount)
+        st.info("Resultado matemático sin redondeo. En mirtazapina se calcula por gato; en citrato potásico para hipopotasemia, en mEq/gato. No equivale a una dosis prescrita.")
+        st.caption(f"Fuente: [{regimen['url']}]({regimen['url']})")
+
+    with st.expander("Calculadora aritmética de una pauta ya prescrita"):
+        st.caption("Úsala solo para transcribir una orden veterinaria confirmada. No selecciona fármaco, dosis ni frecuencia.")
+        prescribed = st.number_input("Dosis prescrita (valor numérico)", min_value=0.0, value=0.0, step=0.1, key="custom_dose")
+        prescribed_unit = st.selectbox("Unidad de la dosis", ["mg/kg por toma", "µg/kg por toma", "mEq/kg por toma", "mg por gato/toma", "mEq por gato/toma"])
+        prescribed_route = st.text_input("Vía indicada en la orden", placeholder="p. ej., PO, SC")
+        prescribed_interval = st.text_input("Intervalo indicado en la orden", placeholder="p. ej., cada 12 h")
+        product_conc = st.number_input("Concentración del producto (misma unidad base por mL; 0 si no es líquido)", min_value=0.0, value=0.0, step=0.1, key="custom_conc")
+        if prescribed > 0:
+            per_dose = prescribed * weight if "/kg" in prescribed_unit else prescribed
+            base_unit = prescribed_unit.split(" ")[0]
+            st.write(f"Cantidad por toma: **{per_dose:.4g} {base_unit}** · Vía: **{prescribed_route or 'no indicada'}** · Intervalo: **{prescribed_interval or 'no indicado'}**")
+            if product_conc > 0:
+                st.write(f"Volumen aritmético: **{per_dose/product_conc:.4g} mL por toma**")
+
+with t4:
+    st.subheader("Evidencia científica y fuentes")
+    st.write("La app describe diseño, población y limitaciones disponibles. No convierte tipos de publicación en grados de certeza ni inventa porcentajes de acuerdo.")
+    sources = [
+        ("IRIS Guidelines 2026", "Guía de consenso actualizada: clasificación/ tratamiento ERC perros y gatos, gradación LRA y nuevos umbrales de anemia. La guía advierte que algunas dosis son empíricas y requieren valoración riesgo-beneficio.", "https://www.iris-kidney.com/iris-guidelines-1"),
+        ("IRIS best practice consensus on AKI (2024), resumen 2026", "Consenso de mejores prácticas para perros y gatos, publicado en The Veterinary Journal 305 (2024), 106068; revisión de diagnóstico, fluidos, electrolitos, nefrotóxicos y seguimiento. IRIS señala que parte de las recomendaciones se basa en consenso experto y que el grado no predice por sí solo reversibilidad.", "https://doi.org/10.1016/j.tvjl.2024.106068"),
+        ("iCatCare feline CKD consensus 2026", "Consenso clínico para gatos con ERC; revisa estudios primarios por complicación e incluye dosis y monitorización. No usa una escala GRADE explícita en las recomendaciones consultadas.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553"),
+        ("ACVIM systemic hypertension consensus 2018", "Consenso para perros y gatos; incluye método de medición, categorías de riesgo y tratamiento individualizado por especie/comorbilidad.", "https://pubmed.ncbi.nlm.nih.gov/30353952/"),
+        ("Brown et al., 2020 — telmisartan vs enalapril in dogs", "Ensayo clínico prospectivo, aleatorizado y doble ciego, un centro, 39 perros con ERC/proteinuria, seguimiento 120 días. No es evidencia universal: muestra pequeña; azotemia relevante con combinación en 4/13.", "https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/"),
+        ("Chalhoub et al., 2012 — darbepoetin in cats", "Serie retrospectiva de 25 gatos de 66 tratados, anemia por ERC; 14/25 alcanzaron PCV ≥25% al día 56. Selección por disponibilidad de seguimiento y posibilidad de sesgo; efectos adversos incluyeron hipertensión.", "https://onlinelibrary.wiley.com/doi/10.1111/j.1939-1676.2011.00864.x"),
+        ("Fiocchi et al., 2017 — darbepoetin in dogs", "Estudio multicéntrico retrospectivo de 33 perros con ERC; 28/33 alcanzaron PCV ≥30%. No aleatorizado; se notificaron eventos adversos y no equivale a una prescripción segura para todo paciente.", "https://pubmed.ncbi.nlm.nih.gov/28256075/"),
+        ("IRIS CKD staging system", "Guía para perros y gatos: diagnosticar antes de estadificar, paciente estable/hidratado, interpretación de creatinina/SDMA, UPC y PA; discordancias requieren contexto y repetición.", "https://www.iris-kidney.com/iris-staging-system"),
+    ]
+    for title, note, url in sources:
+        with st.container(border=True):
+            st.markdown(f"**[{title}]({url})**")
+            st.write(note)
+    st.info("La certeza o el nivel de evidencia se indica solo cuando la fuente lo evalúa explícitamente. ‘Consenso’, ‘ensayo clínico’ y ‘estudio observacional’ son diseños/tipos de evidencia, no equivalen por sí solos a una calificación GRADE.")
+with t5:
+    st.subheader("Seguimiento y reevaluación")
+    if issues:
+        for issue in issues:
+            st.markdown(f"- **{issue['title']}:** {issue['monitoring']} [Fuente]({issue['source']})")
+    st.markdown("#### Objetivos y criterios de respuesta")
+    st.markdown("- Proteinuria: documentar tendencia descendente de UPC con creatinina estable; aumento de creatinina/UPC obliga a reevaluar causa y tolerancia.")
+    st.markdown("- Hipertensión: reducir riesgo de daño de órgano diana, evitando hipotensión; registrar varias lecturas y técnica.")
+    st.markdown("- Fósforo: objetivo depende de especie/estadio y guía vigente; repetir tras cambio dietario/quelante, no ajustar a ciegas.")
+    st.markdown("- Anemia: confirmar persistencia y causas corregibles; monitorizar hematocrito, presión, hierro y respuesta antes de cambiar frecuencia.")
+    st.markdown("- LRA: primer control pocos días tras alta; IRIS aconseja vigilancia de función renal al menos cada 3 meses durante el primer año tras LRA, ajustada a evolución.")
+    st.markdown("#### Criterios de escalada")
+    if aki_grade in {"II", "III", "IV", "V"} or oliguria_signal or volume_overload or obstruction or high_k_confirmed or anemia_symptomatic or sbp > 200 or tod:
+        st.error("Derivación/hospitalización prioritaria: LRA azotémica, oliguria/anuria, sobrecarga, obstrucción, hiperpotasemia confirmada o hipertensión con daño de órgano diana/grave.")
+    elif sbp >= 180:
+        st.warning("PA sistólica ≥180 mmHg: confirmación y valoración clínica prioritaria; la hospitalización depende de daño de órgano diana, cifras, estabilidad y contexto.")
+    else:
+        st.write("Escalar si empeora creatinina/SDMA, UPC, PA, potasio, acidosis, fósforo, hematocrito, ingesta, peso o signos clínicos; valorar nefrología si no se controlan complicaciones.")
 
 st.divider()
-st.subheader("Referencias y alcance")
-st.markdown(
-    "- [IRIS Guidelines 2026: estadificación y tratamiento de ERC, gradación de LRA](https://www.iris-kidney.com/iris-guidelines-1)\n"
-    "- [IRIS Staging System: diagnóstico previo, estabilidad y discrepancias de creatinina/SDMA](https://www.iris-kidney.com/iris-staging-system)\n"
-    "- [IRIS AKI Summary 2026, basado en consenso de mejores prácticas publicado en 2024](https://www.iris-kidney.com/new-page-5)\n"
-    "- [Consenso iCatCare 2026 sobre ERC felina](https://journals.sagepub.com/doi/10.1177/1098612X261466553)"
-)
-st.caption(
-    "La aplicación no sustituye la valoración veterinaria, no ofrece prescripciones ni calcula dosis renales. "
-    "Los umbrales deben cotejarse con el documento IRIS vigente y el método del laboratorio antes de decisiones clínicas. "
-    "IRIS reconoce que la estadificación requiere confirmar ERC y estabilidad; la gradación de LRA no predice por sí sola reversibilidad."
-)
-
+st.caption("Alcance actual: cubre clasificación, alertas de complicaciones y varios regímenes con dosis publicadas. Cuando faltan datos, la evidencia es débil o el régimen no está suficientemente respaldado para la especie, la aplicación lo señala y no calcula una dosis. Debe validarse clínicamente antes de uso asistencial.")
