@@ -1523,11 +1523,8 @@ with st.expander("Fuentes AAHA 2026", expanded=False):
         "Los objetivos y ajustes dependen de especie, tipo de insulina y contexto del paciente. La dosis "
         "registrada sirve para contextualizar; la app no prescribe ni cambia una pauta."
     )
-"""Apoyo clínico renal veterinario basado en guías y consensos publicados."""
-from __future__ import annotations
-import streamlit as st
 
-st.set_page_config(page_title="Apoyo renal veterinario", page_icon="🩺", layout="wide")
+# Módulo integrado de apoyo renal
 st.title("🩺 Apoyo renal veterinario — perros y gatos")
 st.caption("Clasificación, problemas tratables, opciones terapéuticas, cálculos de referencia y seguimiento.")
 st.warning(
