@@ -1631,12 +1631,14 @@ with tab_clinical:
         volume_overload = st.checkbox("Posible sobrecarga de volumen", key="renal_volume_overload")
     with c2:
         appetite = st.checkbox("Hiporexia/anorexia")
-        nausea = st.checkbox("Náuseas o vómitos")
+        nausea = st.checkbox("Náuseas")
+        vomiting_active = st.checkbox("Vómitos activos")
         weight_loss = st.checkbox("Pérdida de peso o masa muscular")
         infection = st.checkbox("Posible infección/pielonefritis")
         obstruction = st.checkbox("Posible obstrucción urinaria")
         glomerular = st.checkbox("Sospecha de enfermedad glomerular")
         nephrotoxins = st.checkbox("Exposición a fármacos nefrotóxicos")
+        calcium_blocker = st.checkbox("Recibe amlodipino u otro bloqueador de canales de calcio")
 
 # Classification functions keep the chronic and acute components separate.
 def ckdstage(creat: float, sdma_value: float, sp: str) -> tuple[int, int | None]:
@@ -1653,6 +1655,7 @@ final_stage = max(creat_stage, sdma_stage or creat_stage)
 delta = current_creat - baseline_creat if baseline_creat > 0 else None
 acute_signal = acute_48h
 oliguria_signal = oliguria or (urine_output > 0 and urine_output < 1.0)
+possible_acute_overlay = mode == "ERC estable" and (acute_signal or oliguria_signal or volume_overload or obstruction)
 if current_creat < 1.6:
     aki_grade = "I" if acute_signal else "No asignable"
 elif current_creat <= 2.5:
@@ -1730,7 +1733,7 @@ if anemia_threshold:
     add_issue("Anemia asociada a ERC (posible)", "Investigar y valorar tratamiento", "IRIS 2026 sugiere tratar perros con HCT <30% o anemia persistente 30–35%; gatos <25% o persistente 25–28%. Antes de ESA/HIF-PHI buscar hierro bajo, sangrado, inflamación/infección, parásitos y otras causas.", "Guía IRIS 2026. La guía enumera opciones, pero el umbral no demuestra por sí solo causalidad renal.", "HCT/PCV y PA antes de cada dosis durante inducción; en mantenimiento cada 1–3 meses, además de hierro y efectos adversos.", "https://www.iris-kidney.com/iris-guidelines-1", "Dosis felina de darbepoetina se ofrece como pauta de consenso; perros: no se calcula en esta versión al no integrar una pauta IRIS 2026 específica verificada.")
 if anemia_symptomatic:
     add_issue("Anemia sintomática", "Evaluación urgente", "Valorar estabilidad hemodinámica y transfusión/soporte inmediato según signos y hematocrito; los estimulantes eritropoyéticos tardan días-semanas y no sustituyen la estabilización.", "IRIS anemia review describe transfusión como opción para anemia severa/sintomática y señala riesgos de sobrecarga y reacción transfusional.", "HCT/PCV, perfusión, PA, signos respiratorios y sobrecarga durante cualquier transfusión.", "https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", "La app no calcula transfusión ni sustituye tipaje/pruebas de compatibilidad.")
-if nausea or appetite or weight_loss:
+if nausea or vomiting_active or appetite or weight_loss:
     add_issue("Poco apetito, náuseas o vómitos", "Revisar causas y aliviar síntomas", "Revisar hidratación, estreñimiento, potasio, acidosis, anemia y dolor. En gatos hay opciones antieméticas y de apoyo al apetito; evitar supresores de ácido si no hay sospecha de ulceración.", "Consenso iCatCare 2026; ensayos en gatos con ERC IRIS 2–3 evaluaron maropitant y mirtazapina.", "Registrar ingesta, peso y vómitos; reevaluar respuesta y efectos adversos. Considerar soporte nutricional si persiste la hiporexia.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La evidencia citada es felina; no extrapolar dosis a perros.")
 if dehydration_present:
     add_issue("Deshidratación o volumen circulante bajo", "Corregir y reevaluar", "Valorar perfusión y causa, y corregir con vigilancia veterinaria. La deshidratación puede cambiar la interpretación renal y aumentar el riesgo de algunos fármacos, como los bloqueadores RAAS.", "Consenso IRIS para LRA y consenso iCatCare para ERC felina.", "Controlar peso, perfusión, hidratación, diuresis, presión arterial y signos de sobrecarga.", "https://www.iris-kidney.com/new-page-5")
@@ -1749,14 +1752,13 @@ if nephrotoxins:
 # A treatment plan is separate from the diagnostic/problem alerts above.
 therapy_plan: list[dict[str, str]] = []
 raas_hazard = (
-    mode != "ERC estable" or not ckd_confirmed or not stable_hydrated
+    mode != "ERC estable" or not stable_hydrated
     or dehydration_present or hypotension or high_k_confirmed or nephrotoxins
+    or oliguria_signal or volume_overload
 )
 raas_hazard_reasons = []
 if mode != "ERC estable":
     raas_hazard_reasons.append("hay un contexto de LRA/cambio agudo")
-if not ckd_confirmed:
-    raas_hazard_reasons.append("la ERC no está confirmada")
 if not stable_hydrated and not dehydration_present:
     raas_hazard_reasons.append("no se confirmó estabilidad e hidratación adecuadas")
 if dehydration_present:
@@ -1767,19 +1769,54 @@ if high_k_confirmed:
     raas_hazard_reasons.append("se marcó hiperpotasemia")
 if nephrotoxins:
     raas_hazard_reasons.append("se registró exposición nefrotóxica")
+if oliguria_signal:
+    raas_hazard_reasons.append("la diuresis está por debajo de 1 mL/kg/h o se marcó oliguria/anuria")
+if volume_overload:
+    raas_hazard_reasons.append("se marcó posible sobrecarga de volumen")
 urgent_case = (
     (mode != "ERC estable" and aki_grade in {"II", "III", "IV", "V"})
     or oliguria_signal or volume_overload or obstruction
     or anemia_symptomatic or hypotension or (sbp > 200) or tod
 )
 if urgent_case:
+    urgent_reasons = []
+    if oliguria_signal:
+        daily_urine = urine_output * weight * 24 if urine_output > 0 else 0
+        urgent_reasons.append(
+            f"diuresis {urine_output:.2f} mL/kg/h ({daily_urine:.0f} mL/24 h)" if urine_output > 0
+            else "oliguria/anuria marcada"
+        )
+    if volume_overload:
+        urgent_reasons.append("posible sobrecarga de líquidos")
+    if obstruction:
+        urgent_reasons.append("posible obstrucción urinaria")
+    if hypotension:
+        urgent_reasons.append("hipotensión/perfusión inadecuada")
+    if high_k_confirmed:
+        urgent_reasons.append(f"potasio alto ({potassium:.1f} mmol/L) según el laboratorio")
+    if anemia_symptomatic:
+        urgent_reasons.append("anemia con signos clínicos")
+    if mode != "ERC estable" and aki_grade in {"II", "III", "IV", "V"}:
+        urgent_reasons.append(f"LRA de grado orientativo {aki_grade}")
+    if tod or sbp >= 180:
+        urgent_reasons.append(f"presión sistólica {sbp} mmHg (confirmada: {'sí' if bp_confirmed else 'no'}; daño de órgano diana: {'sí' if tod else 'no'})")
     therapy_plan.append({
         "title": "Prioridad inmediata",
-        "action": "Valoración hospitalaria prioritaria y estabilización según hallazgos. Si hay oliguria/anuria o sobrecarga, no aumentar fluidos automáticamente. Considerar consulta de urgencias/nefrología y terapia renal sustitutiva si las complicaciones no se controlan.",
-        "why": "Los hallazgos introducidos incluyen criterios que pueden requerir monitorización intensiva.",
-        "monitor": "Diuresis, balance y peso, presión arterial, potasio, creatinina y estado ácido-base según gravedad.",
+        "action": "Valoración hospitalaria prioritaria por " + "; ".join(urgent_reasons) + ". En la evaluación inicial: confirmar la medición de diuresis y el peso, revisar perfusión/volemia y medicación, descartar obstrucción con imagen cuando proceda y obtener tendencia de creatinina, urea y electrolitos; ECG si hay hiperpotasemia. Si se confirma hipertensión marcada, buscar daño ocular/neurológico y tratar bajo monitorización. No aumentar fluidos para forzar diuresis; valorar nefrología/terapia renal sustitutiva si las complicaciones no se controlan.",
+        "why": "Se activa por los hallazgos concretos del paciente: " + "; ".join(urgent_reasons) + ". La diuresis baja y la presión alta cambian la seguridad de fluidos y fármacos.",
+        "monitor": "En hospital: entradas/salidas y diuresis horarias; peso y balance cada 6–12 h durante fluidoterapia; presión seriada; creatinina, potasio y estado ácido-base según gravedad. Revalorar el plan después de cada intervención.",
+        "source": "https://doi.org/10.1016/j.tvjl.2024.106068",
     })
-if mode == "ERC estable" and not (ckd_confirmed and stable_hydrated and excluded_prepost):
+if possible_acute_overlay:
+    acute_sign = "oliguria/anuria" if oliguria_signal else "cambio agudo de creatinina" if acute_signal else "sobrecarga/obstrucción posible"
+    therapy_plan.append({
+        "title": "El contexto marcado no parece estable",
+        "action": f"Seleccionaste «ERC estable», pero registraste {acute_sign}. Evalúa un componente agudo aparte o cambia el contexto a LRA/agudización; conserva el estadio basal si ya existe y no interpretes el resultado como progresión crónica hasta estabilizar.",
+        "why": "La diuresis baja, la sobrecarga, la obstrucción o el aumento reciente de creatinina requiere evaluar el momento y la causa.",
+        "monitor": "Tendencia de creatinina, diuresis, hidratación/volemia y urianálisis; imagen/cultivo según sospecha.",
+        "source": "https://doi.org/10.1016/j.tvjl.2024.106068",
+    })
+if mode == "ERC estable" and not (ckd_confirmed and stable_hydrated and excluded_prepost) and not possible_acute_overlay:
     therapy_plan.append({
         "title": "Primero confirmar ERC y estabilidad",
         "action": "No iniciar un plan farmacológico específico de ERC todavía. Confirmar persistencia, hidratación y exclusión de causas prerrenales/posrenales; después asignar estadio y tratar complicaciones demostradas.",
@@ -1822,19 +1859,69 @@ if dehydration_present or hypotension:
         "monitor": "Perfusión, presión arterial, peso, balance de líquidos y diuresis.",
     })
 if hypertensive:
-    if raas_hazard:
+    hypertension_risks = []
+    if mode != "ERC estable":
+        hypertension_risks.append("hay un contexto de lesión renal aguda")
+    if not stable_hydrated and not dehydration_present:
+        hypertension_risks.append("no se confirmó estabilidad e hidratación adecuadas")
+    if oliguria_signal:
+        hypertension_risks.append("hay oliguria/anuria")
+    if volume_overload:
+        hypertension_risks.append("se sospecha sobrecarga de líquidos")
+    if dehydration_present:
+        hypertension_risks.append("se marcó deshidratación/hipovolemia")
+    if hypotension:
+        hypertension_risks.append("se marcó perfusión inadecuada")
+    if high_k_confirmed:
+        hypertension_risks.append("hay hiperpotasemia")
+    if nephrotoxins:
+        hypertension_risks.append("se registró exposición nefrotóxica")
+
+    if sbp >= 180 and bp_confirmed and not tod:
+        hydralazine_start, hydralazine_high = 0.5 * weight, 2 * weight
+        hydralazine_reference = (
+            f"El consenso ACVIM describe hidralazina oral 0,5–2 mg/kg cada 12 h para hipertensión marcada sin daño agudo de órgano diana; "
+            f"la referencia de inicio bajo es 0,5 mg/kg = {hydralazine_start:.2f} mg por toma cada 12 h; el rango publicado para {weight:.2f} kg es {hydralazine_start:.2f}–{hydralazine_high:.2f} mg por toma. "
+        )
+        if hypertension_risks:
+            antihypertensive = (
+                hydralazine_reference + "**Referencia aplazada, no pauta para iniciar ahora**: "
+                + "; ".join(hypertension_risks)
+                + ". En este paciente, primero valorar de urgencia volemia/función renal y la necesidad de tratamiento antihipertensivo supervisado; si se trata, reducir la presión gradualmente y monitorizar. No usar este cálculo como orden."
+            )
+        else:
+            antihypertensive = (
+                hydralazine_reference + "Si el veterinario elige esta opción, comenzar y titular bajo controles frecuentes de presión y perfusión. "
+                "La referencia no reemplaza la selección clínica del fármaco."
+            )
+    elif tod:
+        antihypertensive = "Hay daño de órgano diana: tratar como posible urgencia hipertensiva en un centro con monitorización; la calculadora no propone una pauta oral para esta situación."
+    elif raas_hazard:
         antihypertensive = (
-            "No iniciar ahora telmisartán/benazepril porque " + "; ".join(raas_hazard_reasons) + ". En gatos, puede discutirse amlodipino tras valorar perfusión; el cálculo de ERC sigue bloqueado hasta estabilizar."
-            if species == "Felino" else
-            "No sugerir telmisartán ahora porque " + "; ".join(raas_hazard_reasons) + ". Corregir esos factores, repetir la presión y decidir tratamiento si sigue elevada."
+            "No calcular ni iniciar telmisartán/benazepril ahora porque " + "; ".join(raas_hazard_reasons)
+            + ". Resolver/reevaluar estos factores y repetir presión; después seleccionar fármaco según la causa y los riesgos."
         )
     else:
-        antihypertensive = "amlodipino o telmisartán" if species == "Felino" else "telmisartán; en hipertensión grave puede requerirse tratamiento combinado bajo supervisión"
+        if species == "Felino":
+            aml_low, aml_high = 0.125 * weight, 0.25 * weight
+            telmi_amount = 2 * weight
+            antihypertensive = (
+                f"Referencias felinas del consenso: amlodipino 0,125–0,25 mg/kg PO cada 24 h "
+                f"({aml_low:.2f}–{aml_high:.2f} mg por toma para este peso) o telmisartán 2 mg/kg PO cada 24 h "
+                f"({telmi_amount:.2f} mg por toma). Elegir según proteinuria, perfusión, potasio y respuesta; no combinar sin indicación."
+            )
+        else:
+            telmi_amount = 1 * weight
+            antihypertensive = (
+                f"Referencia ACVIM canina: telmisartán 1 mg/kg PO cada 24 h = {telmi_amount:.2f} mg por toma para este peso. "
+                "Confirmar indicación y causa secundaria; individualizar y vigilar perfusión, creatinina y potasio. No iniciar si aparece oliguria, hipovolemia o hiperpotasemia."
+            )
     therapy_plan.append({
-        "title": "Hipertensión confirmada o daño de órgano diana",
-        "action": f"Considerar {antihypertensive}, seleccionado por gravedad, proteinuria, hidratación y comorbilidades. Si hay daño de órgano diana, priorizar tratamiento y vigilancia estrecha.",
+        "title": "Hipertensión sistólica de alto riesgo" if sbp >= 180 else "Hipertensión confirmada o daño de órgano diana",
+        "action": antihypertensive,
         "why": f"Presión sistólica registrada: {sbp} mmHg; confirmación seriada: {'sí' if bp_confirmed else 'no'}; daño de órgano diana: {'sí' if tod else 'no'}.",
-        "monitor": "Repetir presión en 1–2 semanas tras iniciar/ajustar; vigilar hipotensión, perfusión y función renal.",
+        "monitor": "Si inicia tratamiento: presión y perfusión frecuentes al principio; evitar descensos bruscos. Repetir creatinina y potasio según el fármaco.",
+        "source": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6271319/",
     })
 if hyperphos:
     therapy_plan.append({
@@ -1874,16 +1961,44 @@ if anemia_threshold and not anemia_symptomatic:
         "why": f"Hematocrito registrado: {hct:.1f}%; la decisión también depende de signos y causas concurrentes.",
         "monitor": "Hematocrito y presión antes de cada dosis durante inducción; hierro y efectos adversos.",
     })
-if nausea or appetite or weight_loss:
+if nausea or vomiting_active or appetite or weight_loss:
     if species == "Felino":
-        action = "Tratar causas corregibles y valorar antiemético (maropitant) o apoyo del apetito (mirtazapina) según síntoma y estadio. Las pautas felinas disponibles y su cálculo están abajo."
+        action = (
+            "Revisar causas y valorar mirtazapina para apetito/náusea según estadio. Evitar maropitant si recibe un bloqueador de canales de calcio; la ficha técnica describe interacción. Las pautas felinas disponibles están abajo."
+            if calcium_blocker else
+            "Tratar causas corregibles y valorar antiemético (maropitant) o apoyo del apetito (mirtazapina) según síntoma y estadio. Las pautas felinas disponibles y su cálculo están abajo."
+        )
+    elif vomiting_active and calcium_blocker:
+        action = "Revisar la causa del vómito y el tratamiento actual. La ficha técnica de maropitant advierte que no debe combinarse con bloqueadores de canales de calcio; seleccionar otra opción con el veterinario."
+    elif vomiting_active:
+        action = "Revisar la causa del vómito y valorar control sintomático. Para vómito activo, la ficha técnica española de maropitant ofrece una pauta concreta; el cálculo individual aparece abajo. No sustituye la investigación de obstrucción, toxinas u otras causas."
     else:
-        action = "Revisar hidratación, náuseas, dolor, estreñimiento, dieta y causas concurrentes. Esta versión no incluye una pauta farmacológica renal canina validada para estos signos; individualizar según diagnóstico."
+        action = "Revisar hidratación, náuseas, dolor, estreñimiento, dieta y causas concurrentes. Sin vómito activo, no se activa una pauta antiemética canina de ficha técnica; individualizar el tratamiento según el síntoma y el diagnóstico."
     therapy_plan.append({
         "title": "Control de náuseas y nutrición",
         "action": action,
         "why": "Se registraron signos digestivos, baja ingesta o pérdida de peso.",
         "monitor": "Ingesta, vómitos, peso y masa muscular; reevaluar respuesta y tolerancia.",
+    })
+if species == "Canino" and vomiting_active and not calcium_blocker:
+    injectable_mg = weight * 1.0
+    injectable_ml = injectable_mg / 10.0
+    oral_mg = weight * 2.0
+    therapy_plan.append({
+        "title": "Vómito activo: maropitant, dosis de ficha técnica",
+        "action": f"Solución inyectable: 1 mg/kg SC o IV cada 24 h = {injectable_mg:.2f} mg ({injectable_ml:.2f} mL si el producto es de 10 mg/mL), hasta 5 días. Comprimidos: 2 mg/kg PO cada 24 h = {oral_mg:.2f} mg por toma; la ficha técnica permite hasta 14 días. Son pautas etiquetadas para vómito canino, no estudios de dosificación específicos para ERC. El veterinario debe elegir presentación/vía y revisar la ficha local; no combinar maropitant con antagonistas de canales de calcio.",
+        "why": f"Se marcó vómito activo en un perro de {weight:.2f} kg.",
+        "monitor": "Vómitos e ingesta; investigar y tratar la causa. Vigilar efectos adversos y revisar interacciones, especialmente si recibe amlodipino.",
+        "source": "https://www.zoetis.es/_locale-assets/spc/cerenia-inyectable.pdf",
+        "source2": "https://www.zoetis.es/_locale-assets/spc/cerenia-comprimidos.pdf",
+    })
+elif species == "Canino" and vomiting_active and calcium_blocker:
+    therapy_plan.append({
+        "title": "Vómito activo con bloqueador de canales de calcio",
+        "action": "La ficha técnica de maropitant indica que no debe combinarse con antagonistas de canales de calcio. Se marcó tratamiento actual con amlodipino u otro bloqueador: no mostrar el cálculo de maropitant; elegir una alternativa antiemética con el veterinario.",
+        "why": "Interacción marcada en los datos del paciente.",
+        "monitor": "Revisar lista completa de medicación y controlar vómitos, ingesta y estado renal.",
+        "source": "https://www.zoetis.es/_locale-assets/spc/cerenia-inyectable.pdf",
     })
 if infection or obstruction or glomerular:
     suspected = ", ".join(name for flag, name in [(infection, "infección"), (obstruction, "obstrucción"), (glomerular, "enfermedad glomerular")] if flag)
@@ -1963,6 +2078,10 @@ with t3:
                 st.write(item["action"])
                 st.caption(f"Por qué se incluye: {item['why']}")
                 st.caption(f"Control propuesto: {item['monitor']}")
+                if item.get("source"):
+                    st.markdown(f"[Ficha/fuente]({item['source']})")
+                if item.get("source2"):
+                    st.markdown(f"[Ficha de la presentación oral]({item['source2']})")
     else:
         st.info("Con los datos actuales no aparece una intervención farmacológica específica. Revisa que el perfil, las mediciones y los problemas clínicos estén completos.")
 
@@ -1970,7 +2089,11 @@ with t3:
     st.caption(f"Usa el mismo paciente del módulo superior: {species.lower()}, {weight:.2f} kg. El módulo calcula componentes y volúmenes; no elige solución ni prescribe una tasa automáticamente.")
     if oliguria_signal or volume_overload:
         st.error("**No uses el total combinado calculado arriba como pauta.** La oliguria/anuria o la posible sobrecarga requieren valoración urgente, balance estricto y reevaluación de perfusión. No administres fluidos para forzar diuresis.")
-        st.write("En pacientes renales con diuresis muy baja, el exceso de fluidos puede empeorar hipertensión y edema. La decisión de continuar, reducir o detener fluidos depende de volemia, pérdidas y respuesta medidas.")
+        st.write("En pacientes renales con diuresis muy baja, el exceso de fluidos puede empeorar edema e hipertensión. Primero determina si está hipovolémico, euvolémico o sobrecargado; la calculadora basada en peso no puede decidirlo.")
+        if urine_output > 0:
+            st.write(f"Dato introducido: **{urine_output:.2f} mL/kg/h = {format_volume(urine_output * weight * 24)} mL/24 h**. Regístralo en el balance y no lo cuentes dos veces como pérdida.")
+        st.info("Si ya está euvolémico, el consenso IRIS plantea ajustar el aporte a las pérdidas continuas medidas (orina, digestivas e insensibles); en anuria, no se repone una pérdida urinaria inexistente. El exceso de fluido no aumenta por sí mismo la filtración renal. Por eso no se muestra una tasa total recomendada en este caso.")
+        st.caption("Vigilar balance de entradas/salidas y peso cada 6–12 h durante fluidoterapia, junto con perfusión y signos de sobrecarga.")
     elif mode in {"LRA / cambio agudo", "Agudización de ERC"}:
         st.warning("En LRA o agudización de ERC, interpreta el resultado superior solo como aritmética inicial. Prescribe en un entorno con capacidad de medir entradas/salidas, peso, diuresis, presión y electrolitos; revisa el balance con frecuencia y evita diuresis forzada.")
         if plan_type == "Shock (resucitación)":
@@ -2005,15 +2128,18 @@ with t3:
             st.caption("El volumen de déficit de deshidratación no es lo mismo que un bolo de resucitación.")
     if urine_output > 0:
         urine_ml_day = urine_output * weight * 24
-        st.caption(f"La diuresis medida equivale a {format_volume(urine_ml_day)} mL/24 h para este peso. Si el equipo decide contabilizarla como pérdida continua, introdúcela en el panel superior y evita contarla dos veces.")
+        if not (oliguria_signal or volume_overload):
+            st.caption(f"La diuresis medida equivale a {format_volume(urine_ml_day)} mL/24 h para este peso. Si el equipo decide contabilizarla como pérdida continua, introdúcela en el panel superior y evita contarla dos veces.")
     if hypertensive:
         st.caption("La hipertensión por sí sola no demuestra deshidratación ni es una indicación para aumentar fluidos.")
     st.markdown("[Ir al módulo superior de fluidoterapia](#calculadora-fluidoterapia) · [AAHA: fluidoterapia en pacientes enfermos](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-5-fluid-therapy-in-ill-patients/) · [AAHA: prevención de sobrecarga](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-6-fluid-overload/) · [Consenso IRIS de LRA](https://doi.org/10.1016/j.tvjl.2024.106068)")
 
     st.markdown("### Pautas farmacológicas de referencia")
     st.caption("Se muestran solo opciones con una indicación activa en los datos introducidos. El veterinario decide si procede; el cálculo es aritmético, no una prescripción.")
-    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration_present:
-        st.warning("Los cálculos de pautas para ERC se mantienen bloqueados hasta confirmar ERC estable, hidratación adecuada y estabilidad clínica.")
+    if mode != "ERC estable" or not stable_hydrated or dehydration_present:
+        st.warning("Los cálculos se mantienen bloqueados hasta confirmar estabilidad clínica e hidratación adecuada.")
+    elif not ckd_confirmed:
+        st.caption("Las pautas específicas de ERC/proteinuria requieren ERC confirmada; las opciones para hipertensión se evalúan por separado.")
     options: dict[str, dict] = {}
     common_note = "Confirmación veterinaria, ficha técnica local, producto y monitorización requeridos."
     if species == "Felino":
@@ -2022,6 +2148,7 @@ with t3:
             "Benazepril · proteinuria": dict(low=.25, high=.5, unit="mg/kg", interval="PO cada 12 h", kind="mass", issue="proteinuria", raas=True, source="Consenso iCatCare 2026: opción ACEI felina para proteinuria.", evidence="Consenso con datos de estudios clínicos; no se asigna nivel formal de certeza en la tabla de dosis.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA, creatinina y potasio a 1–2 semanas; UPC a 4 semanas."),
             "Amlodipino · hipertensión": dict(low=.125, high=.25, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=False, source="Consenso iCatCare 2026; opción felina de primera línea según gravedad y respuesta.", evidence="Guía/consenso; la dosis se apoya en estudios clínicos felinos.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA a 1–2 semanas; vigilar hipotensión, debilidad, taquicardia y edema periférico."),
             "Telmisartán · hipertensión": dict(low=2, high=2, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=True, source="Consenso iCatCare 2026; opción felina para hipertensión.", evidence="Guía/consenso basada en ensayos clínicos de hipertensión felina.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="PA, creatinina y potasio a 1–2 semanas; vigilar hipotensión y empeoramiento de azotemia."),
+            "Hidralazina · hipertensión marcada": dict(low=.5, high=2, unit="mg/kg", interval="PO cada 12 h; valorar dosis baja y titular", kind="mass", issue="hypertension_oral", raas=False, source="Consenso ACVIM 2018, opción oral para aumento marcado de presión sin daño agudo de órgano diana.", evidence="Recomendación de consenso; el manejo de hipertensión aguda se apoya en experiencia clínica y requiere reevaluación frecuente.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC6271319/", monitor="PA y perfusión frecuentes al inicio; vigilar taquicardia, hipotensión y función renal."),
             "Maropitant · náuseas/vómitos": dict(low=1, high=1, unit="mg/kg", interval="PO/SC/IV cada 24 h", kind="mass", issue="gastro", raas=False, source="Consenso iCatCare 2026; ensayo controlado en gatos con ERC IRIS 2–3 redujo vómitos.", evidence="Ensayo clínico placebo-controlado citado en consenso; beneficio probado para vómito en la población estudiada.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Vómitos, apetito, hidratación y dolor local si SC."),
             "Mirtazapina · apetito/náusea": dict(low=2, high=2, unit="mg/gato", interval="PO o transdérmica cada 24 h; considerar cada 48 h en ERC avanzada", kind="fixed", issue="gastro", raas=False, source="Consenso iCatCare 2026: 2 mg/gato; intervalo q48h puede reducir acumulación en ERC avanzada.", evidence="Ensayos controlados citados por consenso mostraron menor vómito y aumento de apetito/peso; la frecuencia q48h se apoya en farmacocinética/experiencia clínica.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Apetito, peso, vocalización/agitación y reacción cutánea si transdérmica."),
             "Citrato potásico · hipopotasemia": dict(low=1, high=4, unit="mEq/gato", interval="PO cada 12 h; ajustar a respuesta", kind="fixed", issue="potassium", raas=False, source="Consenso iCatCare 2026: 1–4 mEq/gato q12h en pacientes estables con hipopotasemia moderada-severa.", evidence="Recomendación de consenso; titulación por respuesta, no ensayo dosis-respuesta robusto.", url="https://journals.sagepub.com/doi/10.1177/1098612X261466553", monitor="Potasio, creatinina y signos neuromusculares/GI; evitar si hiperpotasemia."),
@@ -2034,6 +2161,9 @@ with t3:
             "Telmisartán · proteinuria": dict(low=1, high=1, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="proteinuria", raas=True, source="Brown et al., 2020, doble ciego aleatorizado: 39 perros con ERC/proteinuria; umbral UPC >0,5 si azotémico o ≥1,0 si no azotémico.", evidence="Ensayo clínico aleatorizado; 20 telmisartán vs 19 enalapril, 120 días. La combinación produjo azotemia clínicamente relevante en 4/13; no combinar automáticamente.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", monitor="Creatinina, potasio, PA e hidratación a 1–2 semanas; UPC a 4 semanas y luego según respuesta."),
             "Enalapril · proteinuria": dict(low=.5, high=.5, unit="mg/kg", interval="PO cada 12 h", kind="mass", issue="proteinuria", raas=True, source="Brown et al., 2020, ensayo clínico canino de proteinuria renal persistente; enalapril fue el comparador activo.", evidence="Ensayo clínico aleatorizado de un centro (n=39 total); no usar combinación ACEI+ARB como si fuese segura: empeoramiento de azotemia en 4/13 perros combinados.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/", monitor="Creatinina, potasio, PA e hidratación a 1–2 semanas; UPC a 4 semanas."),
             "Telmisartán · hipertensión": dict(low=1, high=1, unit="mg/kg", interval="PO cada 24 h", kind="mass", issue="hipertensión", raas=True, source="Consenso ACVIM 2018: dosis de referencia en hipertensión canina.", evidence="Consenso con evidencia clínica veterinaria limitada; individualizar por proteinuria, PA, hidratación y respuesta.", url="https://pubmed.ncbi.nlm.nih.gov/30353952/", monitor="PA, creatinina, potasio e hidratación 1–2 semanas tras inicio/ajuste."),
+            "Hidralazina · hipertensión marcada": dict(low=.5, high=2, unit="mg/kg", interval="PO cada 12 h; valorar dosis baja y titular", kind="mass", issue="hypertension_oral", raas=False, source="Consenso ACVIM 2018, opción oral para aumento marcado de presión sin daño agudo de órgano diana.", evidence="Recomendación de consenso; el manejo de hipertensión aguda se apoya en experiencia clínica y requiere reevaluación frecuente.", url="https://pmc.ncbi.nlm.nih.gov/articles/PMC6271319/", monitor="PA y perfusión frecuentes al inicio; vigilar taquicardia, hipotensión y función renal."),
+            "Maropitant inyectable · vómito activo": dict(low=1, high=1, unit="mg/kg", interval="SC/IV cada 24 h; hasta 5 días", kind="mass", issue="vomiting", raas=False, source="Ficha técnica española Cerenia solución inyectable: 1 mg/kg SC/IV q24h hasta 5 días.", evidence="Dosis autorizada para vómito canino; no es un ensayo de tratamiento específico de uremia/ERC.", url="https://www.zoetis.es/_locale-assets/spc/cerenia-inyectable.pdf", monitor="Vómitos, hidratación, ingesta y causa subyacente; revisar interacción con bloqueadores de canales de calcio."),
+            "Maropitant comprimidos · vómito": dict(low=2, high=2, unit="mg/kg", interval="PO cada 24 h; hasta 14 días", kind="mass", issue="vomiting", raas=False, source="Ficha técnica española Cerenia comprimidos: 2 mg/kg PO q24h para vómito canino.", evidence="Dosis autorizada para vómito canino; no es un ensayo de tratamiento específico de uremia/ERC.", url="https://www.zoetis.es/_locale-assets/spc/cerenia-comprimidos.pdf", monitor="Vómitos, hidratación, ingesta y causa subyacente; revisar interacción con bloqueadores de canales de calcio."),
             "Darbepoetina · anemia renal": dict(low=.45, high=1, unit="µg/kg", interval="SC cada 7 días durante inducción; espaciar tras respuesta", kind="mass", issue="anemia", raas=False, source="IRIS CKD anemia review: 0,45–1 µg/kg SC semanal; cohorte retrospectiva de 33 perros, 85% alcanzó PCV ≥30%.", evidence="Estudio observacional retrospectivo, no ensayo aleatorizado. IRIS informa hipertensión en 24/25 perros de la cohorte que requirieron tratamiento; revisar autorización local.", url="https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", monitor="PA y HCT/PCV antes de cada dosis en inducción; hierro; vigilar hipertensión, hiperpotasemia y signos neurológicos."),
             "Amlodipino · hipertensión grave": dict(low=.1, high=.5, unit="mg/kg", interval="PO cada 24 h; solo como parte del plan de hipertensión grave", kind="mass", issue="hypertension_severe", raas=False, source="Consenso ACVIM 2018: en perros con SBP >200 mmHg puede iniciarse RAAS-inhibidor más bloqueador de canal de calcio; intervalo de dosis citado 0,1–0,5 mg/kg q24h.", evidence="Consenso ACVIM; evidencia en hipertensión canina limitada y decisiones individualizadas.", url="https://pubmed.ncbi.nlm.nih.gov/30353952/", monitor="PA seriada estrecha y revisión de perfusión, hidratación y creatinina."),
         }
@@ -2045,7 +2175,11 @@ with t3:
         active_indications.add("hipertensión")
     if species == "Canino" and sbp > 200 and (bp_confirmed or tod):
         active_indications.add("hypertension_severe")
-    if species == "Felino" and (nausea or appetite or weight_loss):
+    if sbp >= 180 and bp_confirmed and not tod:
+        active_indications.add("hypertension_oral")
+    if species == "Canino" and vomiting_active and not calcium_blocker:
+        active_indications.add("vomiting")
+    if species == "Felino" and (nausea or vomiting_active or appetite or weight_loss):
         active_indications.add("gastro")
     if species == "Felino" and low_k_confirmed:
         active_indications.add("potassium")
@@ -2059,12 +2193,16 @@ with t3:
         and not (regimen["raas"] and raas_hazard)
         and not (regimen["issue"] == "hypertension_severe" and raas_hazard)
         and not (regimen["issue"] in {"hipertensión", "hypertension_severe"} and hypotension)
+        and not (regimen["issue"] in {"hipertensión", "hypertension_severe", "hypertension_oral"} and hypertension_risks)
+        and not (name.startswith("Maropitant") and calcium_blocker)
     }
-    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration_present:
-        patient_options = {}
+    if mode != "ERC estable" or not stable_hydrated or dehydration_present:
+        patient_options = {name: regimen for name, regimen in patient_options.items() if regimen["issue"] == "vomiting"}
+    elif not ckd_confirmed:
+        patient_options = {name: regimen for name, regimen in patient_options.items() if regimen["issue"] in {"hipertensión", "hypertension_oral", "vomiting"}}
 
     if not patient_options:
-        st.info("No hay una pauta de ERC que pueda calcularse con seguridad con los datos actuales. Las opciones no indicadas o contraindicadas se ocultan; el plan explica qué dato o problema hay que corregir antes de reevaluarlas.")
+        st.info("La calculadora no habilita una pauta con los datos/alertas actuales. El plan superior muestra las referencias de dosis aplazadas y el motivo; al resolver o reevaluar esos riesgos se podrá volver a valorar el cálculo.")
     else:
         selected = st.selectbox("Opción farmacológica para un problema detectado", list(patient_options))
         regimen = patient_options[selected]
@@ -2081,22 +2219,26 @@ with t3:
             eligible = hypertensive
         elif regimen["issue"] == "hypertension_severe":
             eligible = sbp > 200 and (bp_confirmed or tod) and raas_plan_confirmed
+        elif regimen["issue"] == "hypertension_oral":
+            eligible = sbp >= 180 and bp_confirmed and not tod
         elif regimen["issue"] == "gastro":
-            eligible = nausea or appetite or weight_loss
+            eligible = nausea or vomiting_active or appetite or weight_loss
         elif regimen["issue"] == "potassium":
             eligible = low_k_confirmed and species == "Felino"
         elif regimen["issue"] == "acidosis":
             eligible = species == "Felino" and bicarbonate > 0 and bicarbonate < 16
+        elif regimen["issue"] == "vomiting":
+            eligible = species == "Canino" and vomiting_active and not calcium_blocker
         else:
             eligible = anemia_threshold and hct > 0
         block_reasons = []
-        if mode != "ERC estable":
+        if mode != "ERC estable" and regimen["issue"] != "vomiting":
             block_reasons.append("el contexto es LRA/agudización, no ERC estable")
-        if not ckd_confirmed:
+        if not ckd_confirmed and regimen["issue"] not in {"hipertensión", "hypertension_severe", "hypertension_oral", "vomiting"}:
             block_reasons.append("la ERC no está confirmada")
-        if not stable_hydrated and not dehydration_present:
+        if not stable_hydrated and not dehydration_present and regimen["issue"] != "vomiting":
             block_reasons.append("no se confirmó estabilidad e hidratación adecuadas")
-        if dehydration_present:
+        if dehydration_present and regimen["issue"] != "vomiting":
             block_reasons.append("hay deshidratación/hipovolemia marcada")
         if regimen["raas"] and high_k_confirmed:
             block_reasons.append("hay hiperpotasemia, por lo que se bloquea el inhibidor RAAS")
@@ -2104,8 +2246,10 @@ with t3:
             block_reasons.append("hay hipotensión/perfusión inadecuada")
         if regimen["raas"] and nephrotoxins:
             block_reasons.append("se registró exposición nefrotóxica")
-        if regimen["issue"] in {"hipertensión", "hypertension_severe"} and hypotension:
+        if regimen["issue"] in {"hipertensión", "hypertension_severe", "hypertension_oral"} and hypotension:
             block_reasons.append("la hipotensión contraindica calcular esta pauta antihipertensiva")
+        if regimen["issue"] in {"hipertensión", "hypertension_severe", "hypertension_oral"} and (oliguria_signal or volume_overload or high_k_confirmed):
+            block_reasons.append("hay oliguria/sobrecarga o hiperpotasemia; primero se debe estabilizar y reevaluar la presión")
         if selected.startswith("Citrato") and high_k_confirmed:
             block_reasons.append("hay hiperpotasemia; se bloquea el citrato potásico")
         if selected.startswith("Citrato") and potassium <= 0:
@@ -2166,6 +2310,8 @@ with t4:
         ("IRIS best practice consensus on AKI (2024), resumen 2026", "Consenso de mejores prácticas para perros y gatos, publicado en The Veterinary Journal 305 (2024), 106068; revisión de diagnóstico, fluidos, electrolitos, nefrotóxicos y seguimiento. IRIS señala que parte de las recomendaciones se basa en consenso experto y que el grado no predice por sí solo reversibilidad.", "https://doi.org/10.1016/j.tvjl.2024.106068"),
         ("iCatCare feline CKD consensus 2026", "Consenso clínico para gatos con ERC; revisa estudios primarios por complicación e incluye dosis y monitorización. No usa una escala GRADE explícita en las recomendaciones consultadas.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553"),
         ("ACVIM systemic hypertension consensus 2018", "Consenso para perros y gatos; incluye método de medición, categorías de riesgo y tratamiento individualizado por especie/comorbilidad.", "https://pubmed.ncbi.nlm.nih.gov/30353952/"),
+        ("Cerenia — ficha técnica española de maropitant", "Ficha regulatoria del producto: vómito en perros, 1 mg/kg SC/IV q24h hasta 5 días; comprimidos 2 mg/kg PO q24h según ficha. Interacción indicada con antagonistas de canales de calcio. Dosis autorizada para vómito, no específicamente validada para uremia/ERC.", "https://www.zoetis.es/_locale-assets/spc/cerenia-inyectable.pdf"),
+        ("Cerenia comprimidos — ficha técnica española", "Comprimidos para perros: maropitant 2 mg/kg PO cada 24 h para tratamiento/prevención del vómito; consultar peso y redondeo de comprimidos en la tabla del producto.", "https://www.zoetis.es/_locale-assets/spc/cerenia-comprimidos.pdf"),
         ("Brown et al., 2020 — telmisartan vs enalapril in dogs", "Ensayo clínico prospectivo, aleatorizado y doble ciego, un centro, 39 perros con ERC/proteinuria, seguimiento 120 días. No es evidencia universal: muestra pequeña; azotemia relevante con combinación en 4/13.", "https://pmc.ncbi.nlm.nih.gov/articles/PMC7694823/"),
         ("Chalhoub et al., 2012 — darbepoetin in cats", "Serie retrospectiva de 25 gatos de 66 tratados, anemia por ERC; 14/25 alcanzaron PCV ≥25% al día 56. Selección por disponibilidad de seguimiento y posibilidad de sesgo; efectos adversos incluyeron hipertensión.", "https://onlinelibrary.wiley.com/doi/10.1111/j.1939-1676.2011.00864.x"),
         ("Fiocchi et al., 2017 — darbepoetin in dogs", "Estudio multicéntrico retrospectivo de 33 perros con ERC; 28/33 alcanzaron PCV ≥30%. No aleatorizado; se notificaron eventos adversos y no equivale a una prescripción segura para todo paciente.", "https://pubmed.ncbi.nlm.nih.gov/28256075/"),
