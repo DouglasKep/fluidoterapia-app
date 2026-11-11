@@ -1727,6 +1727,129 @@ if hypoalbuminemia_confirmed:
 if nephrotoxins:
     add_issue("Exposición nefrotóxica", "Revisión farmacológica prioritaria", "Revisar indicación, exposición, alternativas, aclaramiento renal e interacciones; suspender/cambiar solo por decisión del veterinario responsable.", "Consenso IRIS LRA; estudios y guías de prevención de nefrotoxicidad.", "Creatinina y diuresis; en riesgo hospitalario, monitorización al menos diaria.", "https://www.iris-kidney.com/new-page-2")
 
+# A treatment plan is separate from the diagnostic/problem alerts above.
+therapy_plan: list[dict[str, str]] = []
+urgent_case = (
+    (mode != "ERC estable" and aki_grade in {"II", "III", "IV", "V"})
+    or oliguria_signal or volume_overload or obstruction or high_k_confirmed
+    or anemia_symptomatic or (sbp > 200) or tod
+)
+if urgent_case:
+    therapy_plan.append({
+        "title": "Prioridad inmediata",
+        "action": "Valoración hospitalaria prioritaria y estabilización según hallazgos. Si hay oliguria/anuria o sobrecarga, no aumentar fluidos automáticamente. Considerar consulta de urgencias/nefrología y terapia renal sustitutiva si las complicaciones no se controlan.",
+        "why": "Los hallazgos introducidos incluyen criterios que pueden requerir monitorización intensiva.",
+        "monitor": "Diuresis, balance y peso, presión arterial, potasio, creatinina y estado ácido-base según gravedad.",
+    })
+if mode == "ERC estable" and not (ckd_confirmed and stable_hydrated and excluded_prepost):
+    therapy_plan.append({
+        "title": "Primero confirmar ERC y estabilidad",
+        "action": "No iniciar un plan farmacológico específico de ERC todavía. Confirmar persistencia, hidratación y exclusión de causas prerrenales/posrenales; después asignar estadio y tratar complicaciones demostradas.",
+        "why": "Los datos actuales no confirman todos los requisitos para interpretar ERC estable.",
+        "monitor": "Creatinina/SDMA, urianálisis y estado de hidratación; repetir según evolución.",
+    })
+if mode == "ERC estable" and ckd_confirmed and stable_hydrated and excluded_prepost:
+    therapy_plan.append({
+        "title": f"Cuidados de base para ERC IRIS {final_stage}",
+        "action": "Acordar dieta renal y soporte nutricional según apetito, peso y tolerancia; mantener acceso a agua y tratar las complicaciones identificadas abajo. El estadio por sí solo no determina un fármaco.",
+        "why": "ERC registrada como confirmada, estable e hidratada; adaptar el manejo a especie, estadio y problemas concurrentes.",
+        "monitor": "Peso y condición corporal, apetito, creatinina/SDMA, fósforo, UPC y presión arterial según hallazgos y cambios terapéuticos.",
+    })
+if mode in {"LRA / cambio agudo", "Agudización de ERC"}:
+    therapy_plan.append({
+        "title": "Manejo del componente agudo",
+        "action": "Investigar y tratar la causa desencadenante; reevaluar perfusión, balance de líquidos y diuresis antes de pautar fluidos. En agudización, conservar el estadio renal basal y registrar por separado la lesión aguda.",
+        "why": "El paciente se marcó con LRA/cambio agudo o agudización de ERC.",
+        "monitor": "Diuresis, peso/balance, creatinina, electrolitos y presión con frecuencia acorde a la gravedad; control tras el alta.",
+    })
+if proteinuric:
+    meds = "telmisartán o benazepril" if species == "Felino" else "telmisartán o enalapril"
+    therapy_plan.append({
+        "title": "Proteinuria renal persistente",
+        "action": f"Valorar dieta renal y bloqueo RAAS con {meds}, según presión, potasio, hidratación y tolerancia. Evitar combinar ACEI y ARB de forma rutinaria; no iniciar durante hipovolemia, hipotensión, hiperpotasemia o LRA activa.",
+        "why": f"UPC {upc:.2f} con persistencia confirmada y criterio de intervención registrado para {species.lower()}.",
+        "monitor": "Presión, creatinina y potasio a 1–2 semanas; UPC aproximadamente a 4 semanas y ajustar por respuesta.",
+    })
+if dehydration or hypotension:
+    therapy_plan.append({
+        "title": "Perfusión e hidratación",
+        "action": "Valorar volumen circulante y causa; corregir bajo vigilancia individualizada. Posponer bloqueo RAAS mientras exista deshidratación, hipovolemia o hipotensión. Si hay oliguria o sobrecarga, no administrar fluidos a ciegas.",
+        "why": "Se marcó deshidratación/hipovolemia o perfusión inadecuada.",
+        "monitor": "Perfusión, presión arterial, peso, balance de líquidos y diuresis.",
+    })
+if hypertensive:
+    antihypertensive = "amlodipino o telmisartán" if species == "Felino" else "telmisartán; en hipertensión grave puede requerirse tratamiento combinado bajo supervisión"
+    therapy_plan.append({
+        "title": "Hipertensión confirmada o daño de órgano diana",
+        "action": f"Considerar {antihypertensive}, seleccionado por gravedad, proteinuria, hidratación y comorbilidades. Si hay daño de órgano diana, priorizar tratamiento y vigilancia estrecha.",
+        "why": f"Presión sistólica registrada: {sbp} mmHg; confirmación seriada: {'sí' if bp_confirmed else 'no'}; daño de órgano diana: {'sí' if tod else 'no'}.",
+        "monitor": "Repetir presión en 1–2 semanas tras iniciar/ajustar; vigilar hipotensión, perfusión y función renal.",
+    })
+if hyperphos:
+    therapy_plan.append({
+        "title": "Fósforo por encima del objetivo del estadio",
+        "action": "Revisar transición a dieta renal y fósforo ingerido. Si sigue sobre objetivo tras 4–6 semanas, valorar quelante administrado con las comidas; no hay cálculo de dosis de quelante en esta versión.",
+        "why": f"Fósforo {phosphorus:.1f} mg/dL; objetivo orientativo para estadio {phosphorus_stage}: <{phosphorus_target:.1f} mg/dL.",
+        "monitor": "Fósforo y calcio 4–6 semanas después del cambio; luego cada 12 semanas si está estable.",
+    })
+if low_k_confirmed:
+    action = "En gatos estables, valorar aporte dietario y suplementación oral con gluconato/citrato potásico; si también hay acidosis puede considerarse citrato. En perros, corregir la causa y ajustar suplementación con el intervalo del laboratorio; esta app no calcula dosis renal canina."
+    if species == "Felino":
+        action = "En gatos estables, valorar aporte dietario y suplementación oral con gluconato/citrato potásico; si también hay acidosis puede considerarse citrato. Evitar si el potasio está alto."
+    therapy_plan.append({
+        "title": "Potasio bajo",
+        "action": action,
+        "why": "Se marcó potasio bajo según el intervalo del laboratorio.",
+        "monitor": "Repetir potasio y función renal tras iniciar o cambiar la suplementación.",
+    })
+if high_k_confirmed:
+    therapy_plan.append({
+        "title": "Potasio alto",
+        "action": "Confirmar que la muestra es válida y revisar diuresis, obstrucción, función renal y fármacos. La urgencia y el tratamiento dependen de la concentración, ECG y estado del paciente; esta app no calcula tratamiento de emergencia.",
+        "why": "Se marcó potasio alto según el intervalo del laboratorio.",
+        "monitor": "Potasio y ECG según gravedad; repetir tras cada intervención.",
+    })
+if acidotic_cat:
+    therapy_plan.append({
+        "title": "Acidosis metabólica felina",
+        "action": "Revisar dieta y causa; el consenso felino contempla citrato potásico o bicarbonato oral. Evitar citrato si hay hiperpotasemia y ajustar según analítica.",
+        "why": f"Bicarbonato/CO₂ total registrado: {bicarbonate:.1f} mmol/L.",
+        "monitor": "Bicarbonato/CO₂ total, potasio y tolerancia tras iniciar o ajustar.",
+    })
+if anemia_threshold and not anemia_symptomatic:
+    therapy_plan.append({
+        "title": "Anemia persistente compatible con ERC",
+        "action": "Antes de un estimulante eritropoyético, investigar hierro bajo, sangrado, inflamación y otras causas corregibles. Si persiste y es clínicamente significativa, valorar darbepoetina con monitorización de presión y hematocrito; revisar el cálculo de referencia abajo.",
+        "why": f"Hematocrito registrado: {hct:.1f}%; la decisión también depende de signos y causas concurrentes.",
+        "monitor": "Hematocrito y presión antes de cada dosis durante inducción; hierro y efectos adversos.",
+    })
+if nausea or appetite or weight_loss:
+    if species == "Felino":
+        action = "Tratar causas corregibles y valorar antiemético (maropitant) o apoyo del apetito (mirtazapina) según síntoma y estadio. Las pautas felinas disponibles y su cálculo están abajo."
+    else:
+        action = "Revisar hidratación, náuseas, dolor, estreñimiento, dieta y causas concurrentes. Esta versión no incluye una pauta farmacológica renal canina validada para estos signos; individualizar según diagnóstico."
+    therapy_plan.append({
+        "title": "Control de náuseas y nutrición",
+        "action": action,
+        "why": "Se registraron signos digestivos, baja ingesta o pérdida de peso.",
+        "monitor": "Ingesta, vómitos, peso y masa muscular; reevaluar respuesta y tolerancia.",
+    })
+if infection or obstruction or glomerular:
+    suspected = ", ".join(name for flag, name in [(infection, "infección"), (obstruction, "obstrucción"), (glomerular, "enfermedad glomerular")] if flag)
+    therapy_plan.append({
+        "title": "Tratar la causa cuando se confirme",
+        "action": f"Investigar primero: {suspected}. Usar cultivo/imagen u otras pruebas según el caso; elegir tratamiento dirigido a la causa y evitar antibióticos o inmunosupresión empíricos sin diagnóstico.",
+        "why": "Se indicó sospecha clínica, todavía no equivale a diagnóstico confirmado.",
+        "monitor": "Repetir pruebas específicas de la causa y función renal según tratamiento.",
+    })
+if nephrotoxins:
+    therapy_plan.append({
+        "title": "Revisar posibles nefrotóxicos",
+        "action": "Revisar necesidad, alternativas, dosis y aclaramiento renal de cada fármaco; cualquier suspensión o cambio debe decidirlo el veterinario responsable.",
+        "why": "Se registró exposición a un fármaco potencialmente nefrotóxico.",
+        "monitor": "Creatinina, diuresis y electrolitos según medicamento y riesgo.",
+    })
+
 # Clinical blocks.
 t1, t2, t3, t4, t5 = st.tabs(["1 · Clasificación", "2 · Problemas", "3 · Plan y dosis", "4 · Evidencia", "5 · Seguimiento"])
 with t1:
@@ -1778,19 +1901,24 @@ with t2:
                     st.warning(issue["limit"])
                 st.markdown(f"[Consultar fuente]({issue['source']})")
 with t3:
-    st.subheader("Plan terapéutico y cálculos")
-    st.markdown("### Resumen del plan")
-    st.caption("Pasos sugeridos a partir de los datos introducidos. Los detalles y la evidencia están en «Alertas y siguientes pasos».")
-    if issues:
-        for issue in issues:
-            with st.expander(f"{issue['title']} · {issue['status']}"):
-                st.write(issue["action"])
-                st.caption(f"Seguimiento: {issue['monitoring']}")
+    st.subheader("Plan terapéutico individualizado")
+    st.caption("Prioriza las acciones clínicas para este paciente. Las alertas diagnósticas y sus fuentes están en la pestaña anterior.")
+    if urgent_case:
+        st.error("Prioridad alta: atender primero la estabilización y las complicaciones urgentes.")
+    if therapy_plan:
+        for item in therapy_plan:
+            with st.container(border=True):
+                st.markdown(f"#### {item['title']}")
+                st.write(item["action"])
+                st.caption(f"Por qué se incluye: {item['why']}")
+                st.caption(f"Control propuesto: {item['monitor']}")
     else:
-        st.info("Completa datos clínicos para construir el plan de revisión.")
+        st.info("Con los datos actuales no aparece una intervención farmacológica específica. Revisa que el perfil, las mediciones y los problemas clínicos estén completos.")
 
-    st.markdown("### Calculadora de pautas publicadas")
-    st.caption("Elige un régimen que corresponda a un problema confirmado. Se calcula cantidad por toma; no se redondea ni se transforma en receta.")
+    st.markdown("### Pautas farmacológicas de referencia")
+    st.caption("Se muestran solo opciones con una indicación activa en los datos introducidos. El veterinario decide si procede; el cálculo es aritmético, no una prescripción.")
+    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration:
+        st.warning("Los cálculos de pautas para ERC se mantienen bloqueados hasta confirmar ERC estable, hidratación adecuada y estabilidad clínica.")
     options: dict[str, dict] = {}
     common_note = "Confirmación veterinaria, ficha técnica local, producto y monitorización requeridos."
     if species == "Felino":
@@ -1815,58 +1943,78 @@ with t3:
             "Amlodipino · hipertensión grave": dict(low=.1, high=.5, unit="mg/kg", interval="PO cada 24 h; solo como parte del plan de hipertensión grave", kind="mass", issue="hypertension_severe", raas=False, source="Consenso ACVIM 2018: en perros con SBP >200 mmHg puede iniciarse RAAS-inhibidor más bloqueador de canal de calcio; intervalo de dosis citado 0,1–0,5 mg/kg q24h.", evidence="Consenso ACVIM; evidencia en hipertensión canina limitada y decisiones individualizadas.", url="https://pubmed.ncbi.nlm.nih.gov/30353952/", monitor="PA seriada estrecha y revisión de perfusión, hidratación y creatinina."),
         }
 
-    selected = st.selectbox("Pauta publicada (la selección no equivale a prescripción)", list(options))
-    regimen = options[selected]
-    calculate_reference = st.checkbox("Calcular esta pauta de referencia (revisión veterinaria confirmada)")
-    if species == "Canino" and selected.startswith("Amlodipino"):
-        raas_plan_confirmed = st.checkbox("El plan clínico ya contempla el bloqueador RAAS concomitante para hipertensión canina grave")
+    active_indications = set()
+    if proteinuric:
+        active_indications.add("proteinuria")
+    if hypertensive:
+        active_indications.add("hipertensión")
+    if species == "Canino" and sbp > 200 and (bp_confirmed or tod):
+        active_indications.add("hypertension_severe")
+    if species == "Felino" and (nausea or appetite or weight_loss):
+        active_indications.add("gastro")
+    if species == "Felino" and low_k_confirmed:
+        active_indications.add("potassium")
+    if species == "Felino" and bicarbonate > 0 and bicarbonate < 16:
+        active_indications.add("acidosis")
+    if anemia_threshold and not anemia_symptomatic:
+        active_indications.add("anemia")
+    patient_options = {name: regimen for name, regimen in options.items() if regimen["issue"] in active_indications}
+
+    if not patient_options:
+        st.info("Con los datos introducidos no hay una pauta farmacológica de referencia que encaje con una indicación registrada. Revisa el plan clínico y usa la calculadora manual solo para una orden ya prescrita.")
     else:
-        raas_plan_confirmed = True
-    formulation = st.number_input("Concentración (mg/mL o µg/mL según unidad; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.3f")
-    mEq_conc = st.number_input("Concentración de potasio (mEq/mL; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
-    if regimen["issue"] == "proteinuria":
-        eligible = proteinuric
-    elif regimen["issue"] == "hipertensión":
-        eligible = hypertensive
-    elif regimen["issue"] == "hypertension_severe":
-        eligible = sbp > 200 and (bp_confirmed or tod) and raas_plan_confirmed
-    elif regimen["issue"] == "gastro":
-        eligible = nausea or appetite or weight_loss
-    elif regimen["issue"] == "potassium":
-        eligible = low_k_confirmed and species == "Felino"
-    elif regimen["issue"] == "acidosis":
-        eligible = species == "Felino" and bicarbonate > 0 and bicarbonate < 16
-    else:
-        eligible = anemia_threshold and hct > 0
-    blocked = (mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration) or (regimen["raas"] and (high_k_confirmed or hypotension or nephrotoxins)) or (selected.startswith("Citrato") and (high_k_confirmed or potassium <= 0)) or (regimen["issue"] == "potassium" and (not low_k_confirmed or potassium <= 0)) or (regimen["issue"] == "anemia" and anemia_symptomatic)
-    if not calculate_reference:
-        st.info("Selecciona la pauta adecuada y confirma que quieres ver el cálculo aritmético; la aplicación no propone ni inicia el tratamiento automáticamente.")
-    elif not eligible:
-        st.warning("No se cumplen los datos de elegibilidad registrados para esta indicación; no se calcula una dosis.")
-    elif blocked:
-        st.error("Cálculo bloqueado por inestabilidad, anemia sintomática, deshidratación/hipovolemia, hipotensión, posible LRA, exposición nefrotóxica o riesgo de potasio. Resolver/revaluar antes de considerar la pauta.")
-    else:
-        st.markdown(f"**Fuente/tipo:** {regimen['source']}  \n**Evidencia:** {regimen['evidence']}  \n**Monitorización:** {regimen['monitor']}")
-        regimen_interval = regimen["interval"]
-        if species == "Felino" and selected.startswith("Mirtazapina"):
-            regimen_interval = "PO o transdérmica cada 48 h como referencia por ERC avanzada" if final_stage >= 3 else "PO o transdérmica cada 24 h como referencia inicial"
-        st.markdown(f"**Vía/intervalo publicado:** {regimen_interval}")
-        if regimen["kind"] == "fixed":
-            quantity_low, quantity_high = regimen["low"], regimen["high"]
-            amount = f"{quantity_low:g} {regimen['unit']} por toma" if quantity_low == quantity_high else f"{quantity_low:g}–{quantity_high:g} {regimen['unit']} por toma"
-            if mEq_conc > 0 and regimen["unit"] == "mEq/gato":
-                amount += f" · volumen aritmético {quantity_low/mEq_conc:.3g}–{quantity_high/mEq_conc:.3g} mL"
-            elif formulation > 0 and regimen["unit"] == "mg/gato":
-                amount += f" · volumen aritmético {quantity_low/formulation:.3g} mL"
+        selected = st.selectbox("Opción farmacológica para un problema detectado", list(patient_options))
+        regimen = patient_options[selected]
+        calculate_reference = st.checkbox("Calcular esta pauta de referencia (revisión veterinaria confirmada)")
+        if species == "Canino" and selected.startswith("Amlodipino"):
+            raas_plan_confirmed = st.checkbox("El plan clínico ya contempla el bloqueador RAAS concomitante para hipertensión canina grave")
         else:
-            quantity_low = weight * regimen["low"]
-            quantity_high = weight * regimen["high"]
-            amount = f"{quantity_low:.3g}–{quantity_high:.3g} {regimen['unit'].split('/')[0]} por toma"
-            if formulation > 0:
-                amount += f" · volumen aritmético {quantity_low/formulation:.3g}–{quantity_high/formulation:.3g} mL"
-        st.metric("Cantidad calculada", amount)
-        st.info("Resultado matemático sin redondeo. En mirtazapina se calcula por gato; en citrato potásico para hipopotasemia, en mEq/gato. No equivale a una dosis prescrita.")
-        st.caption(f"Fuente: [{regimen['url']}]({regimen['url']})")
+            raas_plan_confirmed = True
+        formulation = st.number_input("Concentración (mg/mL o µg/mL según unidad; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.3f")
+        mEq_conc = st.number_input("Concentración de potasio (mEq/mL; 0 si no aplica)", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+        if regimen["issue"] == "proteinuria":
+            eligible = proteinuric
+        elif regimen["issue"] == "hipertensión":
+            eligible = hypertensive
+        elif regimen["issue"] == "hypertension_severe":
+            eligible = sbp > 200 and (bp_confirmed or tod) and raas_plan_confirmed
+        elif regimen["issue"] == "gastro":
+            eligible = nausea or appetite or weight_loss
+        elif regimen["issue"] == "potassium":
+            eligible = low_k_confirmed and species == "Felino"
+        elif regimen["issue"] == "acidosis":
+            eligible = species == "Felino" and bicarbonate > 0 and bicarbonate < 16
+        else:
+            eligible = anemia_threshold and hct > 0
+        blocked = (mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration) or (regimen["raas"] and (high_k_confirmed or hypotension or nephrotoxins)) or (selected.startswith("Citrato") and (high_k_confirmed or potassium <= 0)) or (regimen["issue"] == "potassium" and (not low_k_confirmed or potassium <= 0)) or (regimen["issue"] == "anemia" and anemia_symptomatic)
+        if not calculate_reference:
+            st.info("Selecciona la pauta adecuada y confirma que quieres ver el cálculo aritmético; la aplicación no propone ni inicia el tratamiento automáticamente.")
+        elif not eligible:
+            st.warning("No se cumplen los datos de elegibilidad registrados para esta indicación; no se calcula una dosis.")
+        elif blocked:
+            st.error("Cálculo bloqueado por inestabilidad, anemia sintomática, deshidratación/hipovolemia, hipotensión, posible LRA, exposición nefrotóxica o riesgo de potasio. Resolver/revaluar antes de considerar la pauta.")
+        else:
+            st.markdown(f"**Fuente/tipo:** {regimen['source']}  \n**Evidencia:** {regimen['evidence']}  \n**Monitorización:** {regimen['monitor']}")
+            regimen_interval = regimen["interval"]
+            if species == "Felino" and selected.startswith("Mirtazapina"):
+                regimen_interval = "PO o transdérmica cada 48 h como referencia por ERC avanzada" if final_stage >= 3 else "PO o transdérmica cada 24 h como referencia inicial"
+            st.markdown(f"**Vía/intervalo publicado:** {regimen_interval}")
+            if regimen["kind"] == "fixed":
+                quantity_low, quantity_high = regimen["low"], regimen["high"]
+                amount = f"{quantity_low:g} {regimen['unit']} por toma" if quantity_low == quantity_high else f"{quantity_low:g}–{quantity_high:g} {regimen['unit']} por toma"
+                if mEq_conc > 0 and regimen["unit"] == "mEq/gato":
+                    amount += f" · volumen aritmético {quantity_low/mEq_conc:.3g}–{quantity_high/mEq_conc:.3g} mL"
+                elif formulation > 0 and regimen["unit"] == "mg/gato":
+                    amount += f" · volumen aritmético {quantity_low/formulation:.3g} mL"
+            else:
+                quantity_low = weight * regimen["low"]
+                quantity_high = weight * regimen["high"]
+                amount = f"{quantity_low:.3g}–{quantity_high:.3g} {regimen['unit'].split('/')[0]} por toma"
+                if formulation > 0:
+                    amount += f" · volumen aritmético {quantity_low/formulation:.3g}–{quantity_high/formulation:.3g} mL"
+            st.metric("Cantidad calculada", amount)
+            st.info("Resultado matemático sin redondeo. En mirtazapina se calcula por gato; en citrato potásico para hipopotasemia, en mEq/gato. No equivale a una dosis prescrita.")
+            st.caption(f"Fuente: [{regimen['url']}]({regimen['url']})")
 
     with st.expander("Calculadora aritmética de una pauta ya prescrita"):
         st.caption("Úsala solo para transcribir una orden veterinaria confirmada. No selecciona fármaco, dosis ni frecuencia.")
