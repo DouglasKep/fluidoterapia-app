@@ -678,6 +678,7 @@ def normalize_drug_name(value: str) -> str:
     )
 
 
+st.markdown('<div id="calculadora-fluidoterapia"></div>', unsafe_allow_html=True)
 st.title("💧 Calculadora de Fluidoterapia")
 st.caption("AAHA 2024 · Herramienta clínica orientativa para caninos y felinos. La decisión y la reevaluación corresponden al veterinario responsable.")
 
@@ -709,7 +710,12 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Reposición y pérdidas")
-    dehydration = st.slider("Deshidratación estimada (%)", 0.0, 30.0, 8.0, step=0.5)
+    dehydration_present = st.checkbox("Deshidratación/hipovolemia identificada", key="fluid_dehydration_present")
+    dehydration = st.slider(
+        "Porcentaje de deshidratación estimado (%)", 0.0, 30.0, 0.0, step=0.5,
+        disabled=not dehydration_present,
+        help="Se habilita al marcar deshidratación/hipovolemia. Si no hay déficit identificado, se mantiene en 0%.",
+    )
     replacement_hours = st.select_slider(
         "Reponer el déficit en", options=[6, 8, 12, 18, 24, 36, 48], value=24, format_func=lambda value: f"{value} h"
     )
@@ -864,6 +870,16 @@ with st.expander("Ver detalle técnico", expanded=False):
 warnings = []
 if patient_type == "Pediátrico" and weight > 10:
     warnings.append("Paciente marcado como pediátrico con peso elevado: confirmar edad, estado y pauta.")
+renal_overload = bool(st.session_state.get("renal_volume_overload", False))
+renal_oliguria = bool(st.session_state.get("renal_oliguria", False))
+renal_hyperkalemia = bool(st.session_state.get("renal_high_potassium", False))
+renal_context = st.session_state.get("renal_context", "")
+if renal_overload or renal_oliguria:
+    warnings.append("La evaluación renal marca oliguria/anuria o posible sobrecarga: no uses el total combinado ni repitas bolos como una pauta automática. Prioriza balance estricto y reevaluación veterinaria.")
+elif renal_context in {"LRA / cambio agudo", "Agudización de ERC"}:
+    warnings.append("La evaluación renal indica LRA/cambio agudo: los volúmenes calculados son referencias matemáticas y requieren prescripción hospitalaria individual con reevaluación frecuente.")
+if renal_hyperkalemia:
+    warnings.append("La evaluación renal marca hiperpotasemia: el cálculo de fluidos no selecciona solución ni corrige una emergencia electrolítica; valorar ECG y tratamiento dirigido.")
 if plan_type != "Shock (resucitación)":
     reference_rate = 5 if species == "Canino" else 4
     if total_ml_per_kg_hour > reference_rate:
@@ -1549,12 +1565,15 @@ st.warning(
 )
 
 with st.sidebar:
-    st.header("Datos del paciente")
-    species = st.radio("Especie", ["Canino", "Felino"])
-    weight = st.number_input("Peso actual (kg)", min_value=0.1, value=5.0, step=0.1, format="%.2f")
-    mode = st.radio("Contexto", ["ERC estable", "LRA / cambio agudo", "Agudización de ERC"])
+    st.header("Evaluación renal")
+    st.caption(f"Paciente compartido con fluidoterapia: {species} · {weight:.2f} kg")
+    mode = st.radio("Contexto", ["ERC estable", "LRA / cambio agudo", "Agudización de ERC"], key="renal_context")
     ckd_confirmed = st.checkbox("ERC confirmada", value=False)
-    stable_hydrated = st.checkbox("Paciente estable y adecuadamente hidratado", value=False)
+    stable_hydrated = st.checkbox(
+        "Paciente estable y adecuadamente hidratado", value=False,
+        disabled=dehydration_present,
+        help="Se desactiva mientras el panel de fluidoterapia indique deshidratación/hipovolemia.",
+    ) and not dehydration_present
     excluded_prepost = st.checkbox("Causas prerrenales y posrenales investigadas", value=False)
     prior_stage = st.selectbox("Estadio ERC previo (si agudización)", ["No conocido", "IRIS 1", "IRIS 2", "IRIS 3", "IRIS 4"])
     st.caption("La estadificación de ERC requiere diagnóstico previo y mediciones estables, idealmente seriadas.")
@@ -1580,7 +1599,7 @@ with tab_urine_bp:
     with c1:
         upc = st.number_input("Cociente proteína/creatinina urinario (UPC)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
         upc_persistent = st.checkbox("Proteinuria persistente; sedimento y cultivo revisados", help="Para interpretar la proteinuria renal, confirmar persistencia y descartar sedimento activo/infección.")
-        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h")
+        oliguria = st.checkbox("Oliguria/anuria o diuresis <1 mL/kg/h durante ≥6 h", key="renal_oliguria")
         urine_output = st.number_input("Diuresis medida (mL/kg/h; 0 si no disponible)", min_value=0.0, value=0.0, step=0.1)
     with c2:
         sbp = st.number_input("Presión arterial sistólica (mmHg; 0 si no medida)", min_value=0, value=0, step=1)
@@ -1593,7 +1612,7 @@ with tab_electrolytes:
         potassium = st.number_input("Potasio (mmol/L; 0 si no medido)", min_value=0.0, value=0.0, step=0.1)
         low_k_confirmed = st.checkbox("Potasio bajo según el intervalo del laboratorio")
     with c2:
-        high_k_confirmed = st.checkbox("Potasio alto según el intervalo del laboratorio")
+        high_k_confirmed = st.checkbox("Potasio alto según el intervalo del laboratorio", key="renal_high_potassium")
         bicarbonate = st.number_input("Bicarbonato / CO₂ total (mmol/L; 0 si no medido)", min_value=0.0, value=0.0, step=0.5)
 with tab_blood:
     c1, c2 = st.columns(2)
@@ -1607,9 +1626,9 @@ with tab_blood:
 with tab_clinical:
     c1, c2 = st.columns(2)
     with c1:
-        dehydration = st.checkbox("Deshidratación o hipovolemia actual")
-        hypotension = st.checkbox("Hipotensión o perfusión inadecuada")
-        volume_overload = st.checkbox("Posible sobrecarga de volumen")
+        st.info(f"Deshidratación/hipovolemia marcada en fluidoterapia: **{'sí' if dehydration_present else 'no'}**. El porcentaje y el déficit se ajustan en el panel compartido.")
+        hypotension = st.checkbox("Hipotensión o perfusión inadecuada", key="renal_hypotension")
+        volume_overload = st.checkbox("Posible sobrecarga de volumen", key="renal_volume_overload")
     with c2:
         appetite = st.checkbox("Hiporexia/anorexia")
         nausea = st.checkbox("Náuseas o vómitos")
@@ -1713,7 +1732,7 @@ if anemia_symptomatic:
     add_issue("Anemia sintomática", "Evaluación urgente", "Valorar estabilidad hemodinámica y transfusión/soporte inmediato según signos y hematocrito; los estimulantes eritropoyéticos tardan días-semanas y no sustituyen la estabilización.", "IRIS anemia review describe transfusión como opción para anemia severa/sintomática y señala riesgos de sobrecarga y reacción transfusional.", "HCT/PCV, perfusión, PA, signos respiratorios y sobrecarga durante cualquier transfusión.", "https://www.iris-kidney.com/treatment-of-anemia-in-cats-with-ckd", "La app no calcula transfusión ni sustituye tipaje/pruebas de compatibilidad.")
 if nausea or appetite or weight_loss:
     add_issue("Poco apetito, náuseas o vómitos", "Revisar causas y aliviar síntomas", "Revisar hidratación, estreñimiento, potasio, acidosis, anemia y dolor. En gatos hay opciones antieméticas y de apoyo al apetito; evitar supresores de ácido si no hay sospecha de ulceración.", "Consenso iCatCare 2026; ensayos en gatos con ERC IRIS 2–3 evaluaron maropitant y mirtazapina.", "Registrar ingesta, peso y vómitos; reevaluar respuesta y efectos adversos. Considerar soporte nutricional si persiste la hiporexia.", "https://journals.sagepub.com/doi/10.1177/1098612X261466553", "La evidencia citada es felina; no extrapolar dosis a perros.")
-if dehydration:
+if dehydration_present:
     add_issue("Deshidratación o volumen circulante bajo", "Corregir y reevaluar", "Valorar perfusión y causa, y corregir con vigilancia veterinaria. La deshidratación puede cambiar la interpretación renal y aumentar el riesgo de algunos fármacos, como los bloqueadores RAAS.", "Consenso IRIS para LRA y consenso iCatCare para ERC felina.", "Controlar peso, perfusión, hidratación, diuresis, presión arterial y signos de sobrecarga.", "https://www.iris-kidney.com/new-page-5")
 if oliguria_signal or volume_overload:
     add_issue("Diuresis muy baja o posible sobrecarga de líquidos", "Requiere valoración urgente", "No aumentes los fluidos automáticamente. Hace falta reevaluar perfusión y balance de líquidos; el equipo veterinario puede valorar hospitalización, especialista renal o terapia de reemplazo renal.", "Consenso IRIS para LRA; la sobrecarga de líquidos puede ser grave.", "En hospital, vigilar diuresis, peso, balance de líquidos y exploración al menos dos veces al día.", "https://www.iris-kidney.com/new-page-5")
@@ -1729,10 +1748,29 @@ if nephrotoxins:
 
 # A treatment plan is separate from the diagnostic/problem alerts above.
 therapy_plan: list[dict[str, str]] = []
+raas_hazard = (
+    mode != "ERC estable" or not ckd_confirmed or not stable_hydrated
+    or dehydration_present or hypotension or high_k_confirmed or nephrotoxins
+)
+raas_hazard_reasons = []
+if mode != "ERC estable":
+    raas_hazard_reasons.append("hay un contexto de LRA/cambio agudo")
+if not ckd_confirmed:
+    raas_hazard_reasons.append("la ERC no está confirmada")
+if not stable_hydrated and not dehydration_present:
+    raas_hazard_reasons.append("no se confirmó estabilidad e hidratación adecuadas")
+if dehydration_present:
+    raas_hazard_reasons.append("se marcó deshidratación/hipovolemia")
+if hypotension:
+    raas_hazard_reasons.append("se marcó hipotensión/perfusión inadecuada")
+if high_k_confirmed:
+    raas_hazard_reasons.append("se marcó hiperpotasemia")
+if nephrotoxins:
+    raas_hazard_reasons.append("se registró exposición nefrotóxica")
 urgent_case = (
     (mode != "ERC estable" and aki_grade in {"II", "III", "IV", "V"})
-    or oliguria_signal or volume_overload or obstruction or high_k_confirmed
-    or anemia_symptomatic or (sbp > 200) or tod
+    or oliguria_signal or volume_overload or obstruction
+    or anemia_symptomatic or hypotension or (sbp > 200) or tod
 )
 if urgent_case:
     therapy_plan.append({
@@ -1759,26 +1797,39 @@ if mode in {"LRA / cambio agudo", "Agudización de ERC"}:
     therapy_plan.append({
         "title": "Manejo del componente agudo",
         "action": "Investigar y tratar la causa desencadenante; reevaluar perfusión, balance de líquidos y diuresis antes de pautar fluidos. En agudización, conservar el estadio renal basal y registrar por separado la lesión aguda.",
-        "why": "El paciente se marcó con LRA/cambio agudo o agudización de ERC.",
+        "why": f"Contexto: {mode}; creatinina actual {current_creat:.2f} mg/dL; grado de LRA orientativo {aki_grade}; aumento ≥0,3 mg/dL en 48 h: {'sí' if acute_signal else 'no confirmado'}.",
         "monitor": "Diuresis, peso/balance, creatinina, electrolitos y presión con frecuencia acorde a la gravedad; control tras el alta.",
     })
 if proteinuric:
     meds = "telmisartán o benazepril" if species == "Felino" else "telmisartán o enalapril"
+    proteinuria_action = (
+        "No iniciar ahora un inhibidor RAAS porque " + "; ".join(raas_hazard_reasons) + ". "
+        "Resolver esos factores y volver a valorar el bloqueo RAAS con control de presión, creatinina y potasio."
+        if raas_hazard else
+        f"Valorar dieta renal y bloqueo RAAS con {meds}, según presión, potasio, hidratación y tolerancia. Evitar combinar ACEI y ARB de forma rutinaria."
+    )
     therapy_plan.append({
         "title": "Proteinuria renal persistente",
-        "action": f"Valorar dieta renal y bloqueo RAAS con {meds}, según presión, potasio, hidratación y tolerancia. Evitar combinar ACEI y ARB de forma rutinaria; no iniciar durante hipovolemia, hipotensión, hiperpotasemia o LRA activa.",
+        "action": proteinuria_action,
         "why": f"UPC {upc:.2f} con persistencia confirmada y criterio de intervención registrado para {species.lower()}.",
         "monitor": "Presión, creatinina y potasio a 1–2 semanas; UPC aproximadamente a 4 semanas y ajustar por respuesta.",
     })
-if dehydration or hypotension:
+if dehydration_present or hypotension:
     therapy_plan.append({
         "title": "Perfusión e hidratación",
         "action": "Valorar volumen circulante y causa; corregir bajo vigilancia individualizada. Posponer bloqueo RAAS mientras exista deshidratación, hipovolemia o hipotensión. Si hay oliguria o sobrecarga, no administrar fluidos a ciegas.",
-        "why": "Se marcó deshidratación/hipovolemia o perfusión inadecuada.",
+        "why": f"Deshidratación identificada: {'sí, estimada en ' + format(dehydration, '.1f') + '%' if dehydration_present else 'no'}; perfusión inadecuada marcada: {'sí' if hypotension else 'no'}.",
         "monitor": "Perfusión, presión arterial, peso, balance de líquidos y diuresis.",
     })
 if hypertensive:
-    antihypertensive = "amlodipino o telmisartán" if species == "Felino" else "telmisartán; en hipertensión grave puede requerirse tratamiento combinado bajo supervisión"
+    if raas_hazard:
+        antihypertensive = (
+            "No iniciar ahora telmisartán/benazepril porque " + "; ".join(raas_hazard_reasons) + ". En gatos, puede discutirse amlodipino tras valorar perfusión; el cálculo de ERC sigue bloqueado hasta estabilizar."
+            if species == "Felino" else
+            "No sugerir telmisartán ahora porque " + "; ".join(raas_hazard_reasons) + ". Corregir esos factores, repetir la presión y decidir tratamiento si sigue elevada."
+        )
+    else:
+        antihypertensive = "amlodipino o telmisartán" if species == "Felino" else "telmisartán; en hipertensión grave puede requerirse tratamiento combinado bajo supervisión"
     therapy_plan.append({
         "title": "Hipertensión confirmada o daño de órgano diana",
         "action": f"Considerar {antihypertensive}, seleccionado por gravedad, proteinuria, hidratación y comorbilidades. Si hay daño de órgano diana, priorizar tratamiento y vigilancia estrecha.",
@@ -1806,7 +1857,7 @@ if high_k_confirmed:
     therapy_plan.append({
         "title": "Potasio alto",
         "action": "Confirmar que la muestra es válida y revisar diuresis, obstrucción, función renal y fármacos. La urgencia y el tratamiento dependen de la concentración, ECG y estado del paciente; esta app no calcula tratamiento de emergencia.",
-        "why": "Se marcó potasio alto según el intervalo del laboratorio.",
+        "why": f"Potasio registrado: {potassium:.1f} mmol/L; marcado como alto según el intervalo del laboratorio.",
         "monitor": "Potasio y ECG según gravedad; repetir tras cada intervención.",
     })
 if acidotic_cat:
@@ -1915,9 +1966,53 @@ with t3:
     else:
         st.info("Con los datos actuales no aparece una intervención farmacológica específica. Revisa que el perfil, las mediciones y los problemas clínicos estén completos.")
 
+    st.markdown("### Fluidoterapia conectada con este paciente")
+    st.caption(f"Usa el mismo paciente del módulo superior: {species.lower()}, {weight:.2f} kg. El módulo calcula componentes y volúmenes; no elige solución ni prescribe una tasa automáticamente.")
+    if oliguria_signal or volume_overload:
+        st.error("**No uses el total combinado calculado arriba como pauta.** La oliguria/anuria o la posible sobrecarga requieren valoración urgente, balance estricto y reevaluación de perfusión. No administres fluidos para forzar diuresis.")
+        st.write("En pacientes renales con diuresis muy baja, el exceso de fluidos puede empeorar hipertensión y edema. La decisión de continuar, reducir o detener fluidos depende de volemia, pérdidas y respuesta medidas.")
+    elif mode in {"LRA / cambio agudo", "Agudización de ERC"}:
+        st.warning("En LRA o agudización de ERC, interpreta el resultado superior solo como aritmética inicial. Prescribe en un entorno con capacidad de medir entradas/salidas, peso, diuresis, presión y electrolitos; revisa el balance con frecuencia y evita diuresis forzada.")
+        if plan_type == "Shock (resucitación)":
+            with st.expander("Ver componentes calculados (referencia, no pauta)"):
+                st.write(f"Mantenimiento: {format_volume(maintenance_rate)} mL/h · Déficit: {format_volume(replacement_rate)} mL/h · Pérdidas introducidas: {format_volume(losses_rate)} mL/h · Total continuo aritmético: {format_volume(combined_rate)} mL/h.")
+    elif hypotension:
+        st.warning("La hipotensión requiere determinar si responde a volumen y buscar su causa. El cálculo de mantenimiento/reposición no sustituye una valoración de shock; no repitas bolos sin reevaluar respuesta y perfusión.")
+    elif dehydration_present and dehydration > 0:
+        fluid_columns = st.columns(4)
+        fluid_columns[0].metric("Déficit estimado", f"{format_volume(deficit_ml)} mL", f"{dehydration:.1f}% · reponer en {replacement_hours} h")
+        fluid_columns[1].metric("Mantenimiento", f"{format_volume(maintenance_rate)} mL/h")
+        fluid_columns[2].metric("Pérdidas estimadas", f"{format_volume(losses_rate)} mL/h")
+        fluid_columns[3].metric("Total aritmético", f"{format_volume(combined_rate)} mL/h", f"{total_ml_per_kg_hour:.2f} mL/kg/h")
+        st.info("Estimación inicial, no una orden. Confirmar porcentaje de deshidratación, perfusión, tipo y vía de solución; ajustar según reevaluación. En enfermedad renal, revisar balance y peso estrechamente.")
+    elif dehydration_present:
+        st.warning("Marcaste deshidratación/hipovolemia, pero el porcentaje estimado sigue en 0%. Completa la estimación en el módulo superior antes de interpretar el déficit.")
+    else:
+        fluid_columns = st.columns(3)
+        fluid_columns[0].metric("Déficit seleccionado", "0 mL", "No se marcó deshidratación")
+        fluid_columns[1].metric("Mantenimiento calculado", f"{format_volume(maintenance_rate)} mL/h")
+        fluid_columns[2].metric("Pérdidas estimadas", f"{format_volume(losses_rate)} mL/h")
+        st.info("Sin deshidratación identificada, no se añade reposición de déficit. Valorar primero agua por vía oral/enteral si el paciente puede recibirla; los fluidos IV se usan solo si hay una indicación y con un objetivo definido.")
+    if high_k_confirmed:
+        st.warning("El cálculo de fluidos no trata la hiperpotasemia ni selecciona una solución apropiada. Confirmar el potasio, valorar ECG y elegir fluidos/electrolitos según el caso.")
+    if hypotension and dehydration_present and not (oliguria_signal or volume_overload):
+        bolus_range = (10, 20) if species == "Canino" else (5, 10)
+        st.warning(f"Si el veterinario confirma hipovolemia con hipoperfusión, el consenso IRIS de LRA describe cristaloide isotónico balanceado en bolos de {bolus_range[0]}–{bolus_range[1]} mL/kg, con reevaluación de perfusión después de cada bolo. Elige «Shock» arriba solo si esa indicación está confirmada.")
+        if plan_type == "Shock (resucitación)":
+            in_range = bolus_range[0] <= bolus_ml_per_kg <= bolus_range[1]
+            st.write(f"La calculadora está configurada en **{bolus_ml_per_kg:g} mL/kg**: **{format_volume(single_bolus_ml)} mL por bolo** para este paciente. {'Está dentro' if in_range else 'Queda fuera'} del rango del consenso; confirma la dosis antes de usarla. Revalora antes de repetir.")
+        else:
+            st.caption("El volumen de déficit de deshidratación no es lo mismo que un bolo de resucitación.")
+    if urine_output > 0:
+        urine_ml_day = urine_output * weight * 24
+        st.caption(f"La diuresis medida equivale a {format_volume(urine_ml_day)} mL/24 h para este peso. Si el equipo decide contabilizarla como pérdida continua, introdúcela en el panel superior y evita contarla dos veces.")
+    if hypertensive:
+        st.caption("La hipertensión por sí sola no demuestra deshidratación ni es una indicación para aumentar fluidos.")
+    st.markdown("[Ir al módulo superior de fluidoterapia](#calculadora-fluidoterapia) · [AAHA: fluidoterapia en pacientes enfermos](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-5-fluid-therapy-in-ill-patients/) · [AAHA: prevención de sobrecarga](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-6-fluid-overload/) · [Consenso IRIS de LRA](https://doi.org/10.1016/j.tvjl.2024.106068)")
+
     st.markdown("### Pautas farmacológicas de referencia")
     st.caption("Se muestran solo opciones con una indicación activa en los datos introducidos. El veterinario decide si procede; el cálculo es aritmético, no una prescripción.")
-    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration:
+    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration_present:
         st.warning("Los cálculos de pautas para ERC se mantienen bloqueados hasta confirmar ERC estable, hidratación adecuada y estabilidad clínica.")
     options: dict[str, dict] = {}
     common_note = "Confirmación veterinaria, ficha técnica local, producto y monitorización requeridos."
@@ -1958,10 +2053,18 @@ with t3:
         active_indications.add("acidosis")
     if anemia_threshold and not anemia_symptomatic:
         active_indications.add("anemia")
-    patient_options = {name: regimen for name, regimen in options.items() if regimen["issue"] in active_indications}
+    patient_options = {
+        name: regimen for name, regimen in options.items()
+        if regimen["issue"] in active_indications
+        and not (regimen["raas"] and raas_hazard)
+        and not (regimen["issue"] == "hypertension_severe" and raas_hazard)
+        and not (regimen["issue"] in {"hipertensión", "hypertension_severe"} and hypotension)
+    }
+    if mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration_present:
+        patient_options = {}
 
     if not patient_options:
-        st.info("Con los datos introducidos no hay una pauta farmacológica de referencia que encaje con una indicación registrada. Revisa el plan clínico y usa la calculadora manual solo para una orden ya prescrita.")
+        st.info("No hay una pauta de ERC que pueda calcularse con seguridad con los datos actuales. Las opciones no indicadas o contraindicadas se ocultan; el plan explica qué dato o problema hay que corregir antes de reevaluarlas.")
     else:
         selected = st.selectbox("Opción farmacológica para un problema detectado", list(patient_options))
         regimen = patient_options[selected]
@@ -1986,13 +2089,38 @@ with t3:
             eligible = species == "Felino" and bicarbonate > 0 and bicarbonate < 16
         else:
             eligible = anemia_threshold and hct > 0
-        blocked = (mode != "ERC estable" or not ckd_confirmed or not stable_hydrated or dehydration) or (regimen["raas"] and (high_k_confirmed or hypotension or nephrotoxins)) or (selected.startswith("Citrato") and (high_k_confirmed or potassium <= 0)) or (regimen["issue"] == "potassium" and (not low_k_confirmed or potassium <= 0)) or (regimen["issue"] == "anemia" and anemia_symptomatic)
+        block_reasons = []
+        if mode != "ERC estable":
+            block_reasons.append("el contexto es LRA/agudización, no ERC estable")
+        if not ckd_confirmed:
+            block_reasons.append("la ERC no está confirmada")
+        if not stable_hydrated and not dehydration_present:
+            block_reasons.append("no se confirmó estabilidad e hidratación adecuadas")
+        if dehydration_present:
+            block_reasons.append("hay deshidratación/hipovolemia marcada")
+        if regimen["raas"] and high_k_confirmed:
+            block_reasons.append("hay hiperpotasemia, por lo que se bloquea el inhibidor RAAS")
+        if regimen["raas"] and hypotension:
+            block_reasons.append("hay hipotensión/perfusión inadecuada")
+        if regimen["raas"] and nephrotoxins:
+            block_reasons.append("se registró exposición nefrotóxica")
+        if regimen["issue"] in {"hipertensión", "hypertension_severe"} and hypotension:
+            block_reasons.append("la hipotensión contraindica calcular esta pauta antihipertensiva")
+        if selected.startswith("Citrato") and high_k_confirmed:
+            block_reasons.append("hay hiperpotasemia; se bloquea el citrato potásico")
+        if selected.startswith("Citrato") and potassium <= 0:
+            block_reasons.append("falta un valor de potasio para comprobar seguridad")
+        if regimen["issue"] == "potassium" and (not low_k_confirmed or potassium <= 0):
+            block_reasons.append("no se confirmó potasio bajo con resultado disponible")
+        if regimen["issue"] == "anemia" and anemia_symptomatic:
+            block_reasons.append("hay anemia sintomática que requiere estabilización")
+        blocked = bool(block_reasons)
         if not calculate_reference:
             st.info("Selecciona la pauta adecuada y confirma que quieres ver el cálculo aritmético; la aplicación no propone ni inicia el tratamiento automáticamente.")
         elif not eligible:
             st.warning("No se cumplen los datos de elegibilidad registrados para esta indicación; no se calcula una dosis.")
         elif blocked:
-            st.error("Cálculo bloqueado por inestabilidad, anemia sintomática, deshidratación/hipovolemia, hipotensión, posible LRA, exposición nefrotóxica o riesgo de potasio. Resolver/revaluar antes de considerar la pauta.")
+            st.error("No se calcula esta pauta porque " + "; ".join(block_reasons) + ". Resolver/revaluar y repetir los datos antes de reconsiderarla.")
         else:
             st.markdown(f"**Fuente/tipo:** {regimen['source']}  \n**Evidencia:** {regimen['evidence']}  \n**Monitorización:** {regimen['monitor']}")
             regimen_interval = regimen["interval"]
