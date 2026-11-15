@@ -1056,7 +1056,8 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             elif k_access == "Vía central" and max_k_concentration <= 0:
                 st.warning("Indica el máximo de concentración permitido por el protocolo local para esta vía central antes de calcular la preparación.")
             elif final_k_concentration > max_k_concentration:
-                st.error(f"La concentración final calculada ({final_k_concentration:.3g} mEq/L, incluido el K de la solución base) supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}. No se muestra una receta.")
+                st.metric("KCl matemático requerido · NO PREPARAR", f"{additive_ml:.3g} mL", f"Concentración final: {final_k_concentration:.3g} mEq/L")
+                st.error(f"Supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}; no existe una preparación válida con estos datos. No uses el volumen teórico como receta.")
             elif actual_total_k_rate > 0.5:
                 st.error(f"El aporte total calculado, incluyendo el K de la solución base, sería {actual_total_k_rate:.3f} mEq/kg/h y superaría 0,5 mEq/kg/h. Reduce el ritmo de la bolsa según valoración veterinaria.")
             else:
@@ -1082,9 +1083,13 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
         elif stock_net_mEq_ml <= 0:
             st.error("La concentración indicada del KCl no permite preparar esta mezcla; comprueba la etiqueta y las unidades.")
         elif k_access == "Vía central" and max_k_concentration <= 0:
-            st.warning("Indica el máximo de concentración permitido por el protocolo local para esta vía central antes de calcular la preparación.")
+            theoretical_kcl_ml = ((target_mEq_L - k_base) * k_bag_ml / 1000) / stock_net_mEq_ml
+            st.metric("KCl matemático requerido · NO PREPARAR", f"{theoretical_kcl_ml:.3g} mL")
+            st.warning(f"El cálculo matemático corresponde a {k_bag_ml:g} mL finales, pero no es una receta. Introduce el máximo de concentración que autoriza el protocolo local para esta vía central antes de obtener una preparación validada.")
         elif target_mEq_L > max_k_concentration:
-            st.error(f"La concentración objetivo calculada es {target_mEq_L:.3g} mEq/L, por encima del máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}. La app bloquea la receta para evitar recomendar una mezcla demasiado concentrada. Revisa la pauta, el ritmo total y el protocolo de acceso IV.")
+            theoretical_kcl_ml = ((target_mEq_L - k_base) * k_bag_ml / 1000) / stock_net_mEq_ml
+            st.metric("KCl matemático requerido · NO PREPARAR", f"{theoretical_kcl_ml:.3g} mL", f"La concentración calculada sería {target_mEq_L:.3g} mEq/L")
+            st.error(f"Supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}; no existe una preparación válida con estos datos. Revisa pauta, ritmo total y protocolo IV. No uses el volumen teórico como receta.")
         else:
             required_total_mEq = target_mEq_L * k_bag_ml / 1000
             additive_ml = ((target_mEq_L - k_base) * k_bag_ml / 1000) / stock_net_mEq_ml
