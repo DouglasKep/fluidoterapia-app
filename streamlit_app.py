@@ -910,7 +910,7 @@ with st.expander("Historial de reevaluaciones", expanded=False):
 st.divider()
 st.markdown('<div id="potasio-kcl"></div>', unsafe_allow_html=True)
 st.header("Suplementación intravenosa de KCl")
-st.caption("Calcula una cantidad de KCl para una bolsa y comprueba el aporte total por hora. Introduce el ritmo de fluidos prescrito y la concentración del producto; el módulo no selecciona el ritmo clínico.")
+st.caption("Método principal: pauta AAHA en mEq/kg/h convertida según el ritmo real de la bolsa. La tabla de mEq/L queda disponible como referencia secundaria; el módulo no selecciona el ritmo clínico.")
 with st.expander("Calculadora de K para hipopotasemia", expanded=False):
     st.warning("KCl IV concentrado puede causar arritmia o muerte si se administra rápido o en bolo. Nunca administrar en bolo; mezclar completamente la bolsa, usar bomba y controlar K/ECG según gravedad. No usar estos cálculos sin supervisión veterinaria y diuresis evaluada.")
     k_col1, k_col2 = st.columns(2)
@@ -918,7 +918,7 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
         k_serum = st.number_input("Potasio sérico (mmol/L; numéricamente igual a mEq/L)", min_value=0.0, value=0.0, step=0.1, key="iv_k_serum")
         k_schedule = st.selectbox(
             "Tabla orientativa",
-            ["AAHA 2024 · dosis por kg/h", "Rangos de la primera foto · dosis por kg/h", "Tabla adjunta · mEq KCl/L y velocidad máxima"],
+            ["AAHA 2024 · dosis por kg/h", "Tabla adjunta · mEq KCl/L y velocidad máxima", "Rangos de la primera foto · dosis por kg/h"],
             key="iv_k_schedule",
         )
         table_kcl_add_mEq_L = None
@@ -966,7 +966,7 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 st.warning("La tabla adjunta no define una fila para este valor de K (incluye un hueco entre 2,0 y 2,1 mmol/L). No se selecciona una concentración automáticamente.")
             else:
                 st.metric("KCl indicado por tabla para cada litro", f"{table_kcl_add_mEq_L:.0f} mEq/L", f"Velocidad máxima: {table_vmax_mlkg_h:.0f} mL/kg/h")
-                st.caption("La tabla adjunta especifica concentración añadida y velocidad máxima; no prescribe administrar la solución a esa velocidad. La dosis real depende del ritmo de bomba elegido.")
+                st.caption("La tabla adjunta especifica concentración de KCl añadida por litro y velocidad máxima; no prescribe administrar la solución a esa velocidad. La preparación se calcula directamente para el volumen final elegido. Comprueba el K que ya contiene la solución base.")
         if k_schedule != "Tabla adjunta · mEq KCl/L y velocidad máxima":
             if k_schedule == "AAHA 2024 · dosis por kg/h" and 2.0 <= k_serum <= 3.5:
                 st.metric("Punto medio calculado del rango AAHA", f"{k_rate_default:.3f} mEq/kg/h", f"K sérico {k_serum:.1f} mmol/L")
@@ -1025,9 +1025,16 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             k_base = st.number_input("Potasio de la solución base (mEq/L; según etiqueta)", min_value=0.0, value=0.0, step=0.5, key="iv_k_base_manual")
         st.caption("Se usa 0 mEq/L para SSF y 4 mEq/L para Ringer lactato; comprueba siempre la etiqueta del producto. [Composición estándar de Ringer lactato (Baxter)](https://www.baxterpi.com/pi-pdf/Lactated_Ringers_Injection_%2BViaflex_PI.pdf).")
         k_access = st.selectbox("Acceso de infusión", ["Vía periférica", "Vía central"], key="iv_k_access")
+        peripheral_high_conc_confirmed = False
         if k_access == "Vía periférica":
             max_k_concentration = 60.0
-            st.caption("Límite conservador de la app: 60 mEq/L por vía periférica; confirma el protocolo del centro. [Referencia clínica sobre concentraciones periféricas](https://todaysveterinarypractice.com/wp-content/uploads/sites/4/2018/03/TVP-2018-0304_Waddle_Fluid-Therapy-Part-2_03.pdf).")
+            st.caption("La app señala >60 mEq/L como concentración que requiere cautela y verificación del protocolo local para vía periférica. [Referencia clínica sobre concentraciones periféricas](https://todaysveterinarypractice.com/wp-content/uploads/sites/4/2018/03/TVP-2018-0304_Waddle_Fluid-Therapy-Part-2_03.pdf).")
+            if k_schedule == "Tabla adjunta · mEq KCl/L y velocidad máxima":
+                peripheral_high_conc_confirmed = st.checkbox(
+                    "Confirmo que el protocolo del centro y el acceso permiten usar la concentración indicada por esta tabla",
+                    key="iv_k_peripheral_high_conc_confirm",
+                    help="La tabla adjunta puede indicar concentraciones superiores a 60 mEq/L. La app las muestra solo tras esta confirmación explícita; verifica también el límite total de aporte y la velocidad.",
+                )
         else:
             max_k_concentration = st.number_input(
                 "Máxima concentración final de K autorizada por protocolo (mEq/L; 0 si no está definida)",
@@ -1055,9 +1062,11 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 st.error("El volumen calculado de KCl supera el volumen final de la bolsa. No existe una preparación válida con esta concentración de stock.")
             elif k_access == "Vía central" and max_k_concentration <= 0:
                 st.warning("Indica el máximo de concentración permitido por el protocolo local para esta vía central antes de calcular la preparación.")
-            elif final_k_concentration > max_k_concentration:
+            elif k_access == "Vía periférica" and final_k_concentration > max_k_concentration and not peripheral_high_conc_confirmed:
+                st.warning(f"La preparación de la tabla resulta en {final_k_concentration:.3g} mEq/L totales (incluye el K del fluido base), por encima del umbral conservador de {max_k_concentration:.0f} mEq/L para vía periférica. Comprueba el protocolo y el acceso; marca la confirmación solo si está autorizado.")
+            elif k_access == "Vía central" and final_k_concentration > max_k_concentration:
                 st.metric("KCl matemático requerido · NO PREPARAR", f"{additive_ml:.3g} mL", f"Concentración final: {final_k_concentration:.3g} mEq/L")
-                st.error(f"Supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}; no existe una preparación válida con estos datos. No uses el volumen teórico como receta.")
+                st.error(f"Supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}; no uses el volumen teórico como receta.")
             elif actual_total_k_rate > 0.5:
                 st.error(f"El aporte total calculado, incluyendo el K de la solución base, sería {actual_total_k_rate:.3f} mEq/kg/h y superaría 0,5 mEq/kg/h. Reduce el ritmo de la bolsa según valoración veterinaria.")
             else:
@@ -1070,7 +1079,7 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 st.write(f"**Preparación:** medir **{base_fluid_ml:.3g} mL de {k_base_solution}** y añadir **{additive_ml:.3g} mL de KCl**; mezclar completamente.")
                 st.write(f"KCl en la mezcla: **{table_kcl_add_mEq_L:.0f} mEq/L añadidos** · K total estimado incluyendo el fluido base: **{final_k_concentration:.3g} mEq/L**. A {k_fluid_rate:.3g} mL/h, el aporte calculado es **{actual_kcl_rate:.3f} mEq/kg/h de KCl** ({actual_total_k_rate:.3f} mEq/kg/h incluyendo el K base).")
                 st.metric("Máximo de la tabla para este peso", f"{table_vmax_mlkg_h * weight:.3g} mL/h", f"Máximo por tope de 0,5 mEq/kg/h y K base: {actual_allowed_rate:.3g} mL/h")
-                st.caption("La tabla da un máximo, no una velocidad objetivo. Comprueba acceso IV, etiqueta, compatibilidad, diuresis, función renal y protocolo local. Nunca administrar en bolo; usar bomba y controlar electrolitos/ECG según gravedad.")
+                st.caption("La tabla da una concentración y una velocidad máxima, no una velocidad objetivo. Comprueba acceso IV, etiqueta, compatibilidad, diuresis, función renal y protocolo local. Nunca administrar en bolo; usar bomba y controlar electrolitos/ECG según gravedad.")
     elif k_rate > 0 and k_fluid_rate > 0 and k_stock > 0:
         required_mEq_h = k_rate * weight
         target_mEq_L = required_mEq_h / k_fluid_rate * 1000
@@ -1833,19 +1842,23 @@ st.warning(
     "función renal, comorbilidades, interacciones y monitorización antes de usarlas."
 )
 
-with st.sidebar:
-    st.header("Evaluación renal")
-    st.caption(f"Paciente compartido con fluidoterapia: {species} · {weight:.2f} kg")
-    mode = st.radio("Contexto", ["ERC estable", "LRA / cambio agudo", "Agudización de ERC"], key="renal_context")
-    ckd_confirmed = st.checkbox("ERC confirmada", value=False)
-    stable_hydrated = st.checkbox(
-        "Paciente estable y adecuadamente hidratado", value=False,
-        disabled=dehydration_present,
-        help="Se desactiva mientras el panel de fluidoterapia indique deshidratación/hipovolemia.",
-    ) and not dehydration_present
-    excluded_prepost = st.checkbox("Causas prerrenales y posrenales investigadas", value=False)
-    prior_stage = st.selectbox("Estadio ERC previo (si agudización)", ["No conocido", "IRIS 1", "IRIS 2", "IRIS 3", "IRIS 4"])
-    st.caption("La estadificación de ERC requiere diagnóstico previo y mediciones estables, idealmente seriadas.")
+with st.container(border=True):
+    st.subheader("Contexto necesario para interpretar y orientar el tratamiento")
+    st.caption(f"Paciente compartido con fluidoterapia: {species} · {weight:.2f} kg. Estas confirmaciones son visibles aquí porque determinan qué recomendaciones y cálculos se habilitan.")
+    ctx1, ctx2, ctx3 = st.columns(3)
+    with ctx1:
+        mode = st.radio("Contexto", ["ERC estable", "LRA / cambio agudo", "Agudización de ERC"], key="renal_context")
+    with ctx2:
+        ckd_confirmed = st.checkbox("ERC confirmada", value=False, help="Confirma ERC antes de aplicar recomendaciones específicas de enfermedad crónica.")
+        stable_hydrated = st.checkbox(
+            "Paciente estable y adecuadamente hidratado", value=False,
+            disabled=dehydration_present,
+            help="Se desactiva mientras el panel de fluidoterapia indique deshidratación/hipovolemia.",
+        ) and not dehydration_present
+    with ctx3:
+        excluded_prepost = st.checkbox("Causas prerrenales y posrenales investigadas", value=False)
+        prior_stage = st.selectbox("Estadio ERC previo (si agudización)", ["No conocido", "IRIS 1", "IRIS 2", "IRIS 3", "IRIS 4"])
+    st.caption("La estadificación de ERC requiere diagnóstico previo y mediciones estables, idealmente seriadas. Si no confirmas estos puntos, la app limitará las recomendaciones farmacológicas de ERC.")
 
 st.subheader("Datos clínicos y de laboratorio")
 st.caption("Completa los resultados disponibles y marca las casillas clínicas que correspondan. La creatinina actual es necesaria para clasificar ERC o LRA.")
@@ -2286,8 +2299,8 @@ if nephrotoxins:
     })
 
 # Clinical blocks.
-t1, t2, t3, t4, t5 = st.tabs(["1 · Clasificación", "2 · Problemas", "3 · Plan y dosis", "4 · Evidencia", "5 · Seguimiento"])
-with t1:
+t_plan, t_issues, t_classification, t_evidence, t_followup = st.tabs(["1 · Plan y dosis", "2 · Alertas y problemas", "3 · Clasificación", "4 · Evidencia", "5 · Seguimiento"])
+with t_classification:
     st.subheader("Diagnóstico y clasificación")
     if mode == "ERC estable":
         if species == "Canino":
@@ -2319,7 +2332,7 @@ with t1:
         if oliguria_signal or volume_overload or obstruction or high_k_confirmed or aki_grade in {"II", "III", "IV", "V"}:
             st.error("Criterios de valoración urgente/hospitalaria. No usar la calculadora de fluidos para forzar diuresis.")
     st.markdown("**Subestadificación:** UPC y presión deben interpretarse con mediciones repetidas; la presencia de daño de órgano diana modifica la urgencia.")
-with t2:
+with t_issues:
     st.subheader("Alertas y siguientes pasos")
     st.caption("Cada aviso explica qué conviene revisar. Abre «Por qué aparece» para consultar la fuente y sus límites.")
     if not issues:
@@ -2335,9 +2348,9 @@ with t2:
                 if issue["limit"]:
                     st.warning(issue["limit"])
                 st.markdown(f"[Consultar fuente]({issue['source']})")
-with t3:
+with t_plan:
     st.subheader("Plan terapéutico individualizado")
-    st.caption("Prioriza las acciones clínicas para este paciente. Las alertas diagnósticas y sus fuentes están en la pestaña anterior.")
+    st.caption("Esta es la primera pestaña y reúne las acciones clínicas y los cálculos de dosis habilitados por los datos. Las alertas diagnósticas y sus fuentes están en la pestaña siguiente.")
     if urgent_case:
         st.error("Prioridad alta: atender primero la estabilización y las complicaciones urgentes.")
     if therapy_plan:
@@ -2475,7 +2488,11 @@ with t3:
     else:
         selected = st.selectbox("Opción farmacológica para un problema detectado", list(patient_options))
         regimen = patient_options[selected]
-        calculate_reference = st.checkbox("Calcular esta pauta de referencia (revisión veterinaria confirmada)")
+        calculate_reference = st.checkbox(
+            "Mostrar el cálculo aritmético de la pauta de referencia seleccionada",
+            value=True,
+            help="Se muestra automáticamente para los problemas detectados. Es una referencia publicada y no inicia ni prescribe un tratamiento; valida fármaco, producto, dosis y situación clínica antes de usarla.",
+        )
         if species == "Canino" and selected.startswith("Amlodipino"):
             raas_plan_confirmed = st.checkbox("El plan clínico ya contempla el bloqueador RAAS concomitante para hipertensión canina grave")
         else:
@@ -2571,7 +2588,7 @@ with t3:
             if product_conc > 0:
                 st.write(f"Volumen aritmético: **{per_dose/product_conc:.4g} mL por toma**")
 
-with t4:
+with t_evidence:
     st.subheader("Evidencia científica y fuentes")
     st.write("La app describe diseño, población y limitaciones disponibles. No convierte tipos de publicación en grados de certeza ni inventa porcentajes de acuerdo.")
     sources = [
@@ -2591,7 +2608,7 @@ with t4:
             st.markdown(f"**[{title}]({url})**")
             st.write(note)
     st.info("La certeza o el nivel de evidencia se indica solo cuando la fuente lo evalúa explícitamente. ‘Consenso’, ‘ensayo clínico’ y ‘estudio observacional’ son diseños/tipos de evidencia, no equivalen por sí solos a una calificación GRADE.")
-with t5:
+with t_followup:
     st.subheader("Seguimiento y reevaluación")
     if issues:
         for issue in issues:
