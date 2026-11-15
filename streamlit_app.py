@@ -1184,17 +1184,27 @@ shared_cri_duration = 0.0
 shared_cri_final_volume = 0.0
 shared_cri_rate = 0.0
 if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
-    st.info("Introduce cada fármaco una sola vez. La app sumará los volúmenes de fármaco, calculará el diluyente una sola vez y mostrará el ritmo común de la mezcla.")
+    st.info("Introduce cada fármaco una sola vez. La app sumará los volúmenes de fármaco, calculará el diluyente una sola vez y usará un único ritmo para toda la mezcla.")
+    shared_volume_or_rate = st.radio(
+        "¿Qué dato quieres fijar para la mezcla?",
+        ["Ritmo total de la mezcla", "Volumen final total"],
+        horizontal=True,
+        key="cri_shared_mode",
+        help="El ritmo es el de toda la jeringa/bolsa, no un ritmo por medicamento. La duración y el otro valor se relacionan mediante volumen = ritmo × duración.",
+    )
     shared_cols = st.columns(3)
     shared_cri_duration = shared_cols[0].number_input("Duración común (h)", min_value=0.0, value=0.0, step=0.5, key="cri_shared_duration")
-    shared_volume_or_rate = shared_cols[1].selectbox("Definir la mezcla por", ["Volumen final total", "Ritmo común"], key="cri_shared_mode")
     if shared_volume_or_rate == "Volumen final total":
-        shared_cri_final_volume = shared_cols[2].number_input("Volumen final total (mL)", min_value=0.0, value=0.0, step=1.0, key="cri_shared_volume")
+        shared_cri_final_volume = shared_cols[1].number_input("Volumen final total (mL)", min_value=0.0, value=0.0, step=1.0, key="cri_shared_volume")
         if shared_cri_duration > 0:
             shared_cri_rate = shared_cri_final_volume / shared_cri_duration
+            if shared_cri_final_volume > 0:
+                shared_cols[2].metric("Ritmo total calculado", f"{shared_cri_rate:.3g} mL/h")
     else:
-        shared_cri_rate = shared_cols[2].number_input("Ritmo común (mL/h)", min_value=0.0, value=0.0, step=0.1, key="cri_shared_rate")
+        shared_cri_rate = shared_cols[1].number_input("Ritmo total de la mezcla (mL/h)", min_value=0.0, value=0.0, step=0.1, key="cri_shared_rate")
         shared_cri_final_volume = shared_cri_rate * shared_cri_duration
+        if shared_cri_rate > 0 and shared_cri_duration > 0:
+            shared_cols[2].metric("Volumen final calculado", f"{shared_cri_final_volume:.3g} mL")
 
 cri_inputs = st.data_editor(
     st.session_state.cri_medications_v3,
