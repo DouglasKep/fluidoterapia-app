@@ -681,6 +681,7 @@ def normalize_drug_name(value: str) -> str:
 st.markdown('<div id="calculadora-fluidoterapia"></div>', unsafe_allow_html=True)
 st.title("💧 Calculadora de Fluidoterapia")
 st.caption("AAHA 2024 · Herramienta clínica orientativa para caninos y felinos. La decisión y la reevaluación corresponden al veterinario responsable.")
+st.markdown("**Accesos directos:** [Suplementación IV de KCl](#potasio-kcl) · [Cálculo de CRI](#cri-calculo)")
 
 with st.sidebar:
     st.header("Datos del paciente")
@@ -907,6 +908,72 @@ with st.expander("Historial de reevaluaciones", expanded=False):
         st.caption("Todavía no hay reevaluaciones registradas en esta sesión.")
 
 st.divider()
+st.markdown('<div id="potasio-kcl"></div>', unsafe_allow_html=True)
+st.header("Suplementación intravenosa de KCl")
+st.caption("Calcula una cantidad de KCl para una bolsa y comprueba el aporte total por hora. Introduce el ritmo de fluidos prescrito y la concentración del producto; el módulo no selecciona el ritmo clínico.")
+with st.expander("Calculadora de K para hipopotasemia", expanded=False):
+    st.warning("KCl IV concentrado puede causar arritmia o muerte si se administra rápido o en bolo. Nunca administrar en bolo; mezclar completamente la bolsa, usar bomba y controlar K/ECG según gravedad. No usar estos cálculos sin supervisión veterinaria y diuresis evaluada.")
+    k_col1, k_col2 = st.columns(2)
+    with k_col1:
+        k_serum = st.number_input("Potasio sérico (mmol/L; numéricamente igual a mEq/L)", min_value=0.0, value=0.0, step=0.1, key="iv_k_serum")
+        k_schedule = st.selectbox("Tabla orientativa", ["AAHA 2024", "Rangos de la foto adjunta"], key="iv_k_schedule")
+        if k_schedule == "AAHA 2024":
+            if k_serum <= 0:
+                k_rate_default = 0.0
+            elif k_serum < 2.0:
+                k_rate_default = 0.5
+            elif k_serum <= 2.5:
+                k_rate_default = 0.35
+            elif k_serum <= 3.0:
+                k_rate_default = 0.225
+            elif k_serum <= 3.5:
+                k_rate_default = 0.125
+            else:
+                k_rate_default = 0.05
+            st.caption("AAHA: <2,0: 0,5; 2,0–2,5: 0,3–0,4; 2,6–3,0: 0,2–0,25; 3,1–3,5: 0,1–0,15; >3,5: 0,05 mEq/kg/h.")
+        else:
+            if k_serum <= 0:
+                k_rate_default = 0.0
+            elif k_serum > 3.5:
+                k_rate_default = 0.075
+            elif k_serum >= 3.2:
+                k_rate_default = 0.175
+            elif k_serum >= 3.0:
+                k_rate_default = 0.0
+            else:
+                k_rate_default = 0.45
+            st.caption("La foto indica 3,5–5,5: 0,05–0,1; 3,0–3,5: 0,15–0,2; <3,2: 0,4–0,5 mEq/kg/h. Entre 3,0 y <3,2 se contradicen dos rangos; el aporte inicial queda en 0 para que se introduzca la pauta ya prescrita. Entre 3,2 y <3,5 aplicamos solo el rango 3,0–3,5.")
+        k_rate = st.number_input("Aporte total de K prescrito (mEq/kg/h)", min_value=0.0, max_value=0.5, value=float(k_rate_default), step=0.01, format="%.3f", key="iv_k_rate", help="El valor inicial sigue la tabla elegida; ajusta solo a una pauta veterinaria confirmada. Límite de seguridad: 0,5 mEq/kg/h.")
+        k_fluid_rate = st.number_input("Ritmo de esta solución (mL/h)", min_value=0.0, value=0.0, step=1.0, key="iv_k_fluid_rate")
+    with k_col2:
+        k_bag_ml = st.number_input("Volumen final de bolsa (mL)", min_value=1.0, value=250.0, step=10.0, key="iv_k_bag_ml")
+        k_stock = st.number_input("Concentración de KCl (mEq/mL)", min_value=0.0, value=2.0, step=0.1, key="iv_k_stock")
+        k_base = st.number_input("Potasio ya presente en la solución (mEq/L; 0 si ninguno)", min_value=0.0, value=0.0, step=1.0, key="iv_k_base")
+    if k_rate > 0 and k_fluid_rate > 0 and k_stock > 0:
+        required_mEq_h = k_rate * weight
+        target_mEq_L = required_mEq_h / k_fluid_rate * 1000
+        extra_mEq_L = target_mEq_L - k_base
+        if k_rate > 0.5:
+            st.error("El aporte supera el máximo de 0,5 mEq/kg/h: no se calcula.")
+        elif extra_mEq_L < 0:
+            st.error("La solución base ya aporta más K de lo que permite el ritmo indicado. Cambia la solución o el ritmo según decisión clínica; no se puede retirar K del fluido.")
+        else:
+            added_mEq = extra_mEq_L * k_bag_ml / 1000
+            additive_ml = added_mEq / k_stock
+            total_mEq = target_mEq_L * k_bag_ml / 1000
+            if additive_ml >= k_bag_ml:
+                st.error("El volumen calculado de KCl supera el volumen final de bolsa; revisa concentración y datos.")
+            else:
+                st.metric("KCl a añadir", f"{added_mEq:.3g} mEq · {additive_ml:.3g} mL")
+                st.write(f"Potasio final estimado: **{target_mEq_L:.3g} mEq/L** · aporte total: **{required_mEq_h:.3g} mEq/h ({k_rate:.3f} mEq/kg/h)**.")
+                st.write(f"Para mantener el volumen final en {k_bag_ml:g} mL, retirar primero **{additive_ml:.3g} mL** de la bolsa y añadir el KCl; mezclar completamente.")
+                st.caption("Cálculo basado en aporte total de potasio. Confirma la composición real del fluido, compatibilidad, diuresis, función renal y protocolo local. Reevaluar potasio; no repetir la bolsa sin control.")
+    else:
+        st.info("Introduce el ritmo de fluido y la concentración de KCl para calcular la cantidad de esta bolsa.")
+    st.markdown("Fuente de seguridad: [AAHA 2024 Fluid Therapy Guidelines, hipopotasemia](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-5-fluid-therapy-in-ill-patients/). Máximo recomendado de suplementación IV: 0,5 mEq/kg/h; nunca administrar fluidos con KCl en bolo.")
+
+st.divider()
+st.markdown('<div id="cri-calculo"></div>', unsafe_allow_html=True)
 st.header("Cálculo de CRI")
 st.caption(
     "Calcula por separado el volumen de varios fármacos para sus respectivas CRI, "
@@ -924,8 +991,8 @@ with st.container(border=True):
     st.caption(
         "Puedes introducir dosis por hora, minuto o día (incluidas mg/kg/día y µg/kg/día). "
         "La aplicación convierte automáticamente la dosis diaria a una tasa horaria para calcular la CRI. "
-        "Cada medicamento se calcula por separado. "
-        "Puedes indicar el volumen final o el ritmo "
+        "En preparaciones separadas, cada medicamento se calcula por separado. Si seleccionas una misma jeringa/bolsa, "
+        "se calcula un único volumen final y un ritmo común para la mezcla. Puedes indicar el volumen final o el ritmo "
         "deseado; con la duración se calcula el otro. Si indicas ambos, deben coincidir. "
         "El diluyente es el volumen final menos el volumen del medicamento. La dosis y la concentración deben "
         "pertenecer a la misma familia: masa con masa o UI/mUI con UI/mUI. La actividad "
@@ -952,6 +1019,29 @@ if "Dosis prescrita (mg/kg/h)" in st.session_state.cri_medications_v3.columns:
     st.session_state.cri_medications_v3 = st.session_state.cri_medications_v3.rename(
         columns={"Dosis prescrita (mg/kg/h)": "Dosis prescrita"}
     )
+
+cri_preparation_mode = st.radio(
+    "¿Cómo se administrarán los medicamentos?",
+    ["Preparaciones separadas", "Juntos en una misma jeringa/bolsa"],
+    horizontal=True,
+    key="cri_preparation_mode",
+    help="En la mezcla conjunta se calcula un único volumen final y un único ritmo para toda la jeringa/bolsa.",
+)
+shared_cri_duration = 0.0
+shared_cri_final_volume = 0.0
+shared_cri_rate = 0.0
+if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+    st.info("Introduce cada fármaco una sola vez. La app sumará los volúmenes de fármaco, calculará el diluyente una sola vez y mostrará el ritmo común de la mezcla.")
+    shared_cols = st.columns(3)
+    shared_cri_duration = shared_cols[0].number_input("Duración común (h)", min_value=0.0, value=0.0, step=0.5, key="cri_shared_duration")
+    shared_volume_or_rate = shared_cols[1].selectbox("Definir la mezcla por", ["Volumen final total", "Ritmo común"], key="cri_shared_mode")
+    if shared_volume_or_rate == "Volumen final total":
+        shared_cri_final_volume = shared_cols[2].number_input("Volumen final total (mL)", min_value=0.0, value=0.0, step=1.0, key="cri_shared_volume")
+        if shared_cri_duration > 0:
+            shared_cri_rate = shared_cri_final_volume / shared_cri_duration
+    else:
+        shared_cri_rate = shared_cols[2].number_input("Ritmo común (mL/h)", min_value=0.0, value=0.0, step=0.1, key="cri_shared_rate")
+        shared_cri_final_volume = shared_cri_rate * shared_cri_duration
 
 cri_inputs = st.data_editor(
     st.session_state.cri_medications_v3,
@@ -1014,6 +1104,7 @@ cri_inputs = st.data_editor(
 
 cri_results = []
 cri_errors = []
+total_cri_final_volume = shared_cri_final_volume
 for row_number, row in cri_inputs.iterrows():
     name = str(row.get("Medicamento", "")).strip()
     dose = row.get("Dosis prescrita")
@@ -1036,14 +1127,22 @@ for row_number, row in cri_inputs.iterrows():
     if pd.isna(dose) or dose <= 0:
         cri_errors.append(f"{row_label}: la dosis debe ser mayor que 0 {dose_unit}.")
         continue
+    if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+        duration = shared_cri_duration
     if pd.isna(duration) or duration <= 0:
         cri_errors.append(f"{row_label}: la duración debe ser mayor que 0 h.")
         continue
     if pd.isna(concentration) or concentration <= 0:
         cri_errors.append(f"{row_label}: la concentración debe ser mayor que 0.")
         continue
-    has_target_rate = not pd.isna(target_rate) and target_rate > 0
-    has_final_volume = not pd.isna(final_volume) and final_volume > 0
+    if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+        has_target_rate = shared_cri_rate > 0
+        has_final_volume = shared_cri_final_volume > 0
+        target_rate = shared_cri_rate
+        final_volume = shared_cri_final_volume
+    else:
+        has_target_rate = not pd.isna(target_rate) and target_rate > 0
+        has_final_volume = not pd.isna(final_volume) and final_volume > 0
     if not has_target_rate and not has_final_volume:
         cri_errors.append(
             f"{row_label}: indica un volumen final mayor que 0 mL o un ritmo objetivo mayor que 0 mL/h."
@@ -1111,7 +1210,9 @@ for row_number, row in cri_inputs.iterrows():
         calculated_final_volume = float(final_volume)
         calculated_rate = calculated_final_volume / float(duration)
 
-    if calculated_final_volume < medication_volume_ml:
+    if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+        diluent_volume_ml = 0.0  # el diluyente se calcula una única vez con la suma de todos los fármacos
+    elif calculated_final_volume < medication_volume_ml:
         minimum_rate = (dose_base * weight) / concentration_base
         if has_target_rate:
             cri_errors.append(
@@ -1132,7 +1233,8 @@ for row_number, row in cri_inputs.iterrows():
                 "este cálculo no recomienda ajustar la dosis."
             )
         continue
-    diluent_volume_ml = calculated_final_volume - medication_volume_ml
+    else:
+        diluent_volume_ml = calculated_final_volume - medication_volume_ml
     cri_results.append(
         {
             "Medicamento": name,
@@ -1212,18 +1314,41 @@ if cri_reference_queries:
 
 if cri_results:
     st.subheader("Resultados por medicamento")
-    st.dataframe(
-        pd.DataFrame(cri_results).style.format(
-            {
-                "Medicamento a extraer (mL)": format_cri_value,
-                "Diluyente a añadir (mL)": format_cri_value,
-                "Volumen final (mL)": format_cri_value,
-                "Ritmo de infusión (mL/h)": format_cri_value,
-            }
-        ),
-        width="stretch",
-        hide_index=True,
-    )
+    cri_display = pd.DataFrame(cri_results)
+    if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+        cri_display["Diluyente a añadir (mL)"] = "Incluido en el diluyente común inferior"
+        cri_display["Volumen final (mL)"] = f"Común: {format_cri_value(total_cri_final_volume)}"
+        cri_display["Ritmo de infusión (mL/h)"] = f"Común: {format_cri_value(shared_cri_rate)}"
+        st.dataframe(cri_display, width="stretch", hide_index=True)
+    else:
+        st.dataframe(
+            cri_display.style.format(
+                {
+                    "Medicamento a extraer (mL)": format_cri_value,
+                    "Diluyente a añadir (mL)": format_cri_value,
+                    "Volumen final (mL)": format_cri_value,
+                    "Ritmo de infusión (mL/h)": format_cri_value,
+                }
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+    if cri_preparation_mode == "Juntos en una misma jeringa/bolsa":
+        total_cri_drug = sum(item["Medicamento a extraer (mL)"] for item in cri_results)
+        if not cri_errors and total_cri_final_volume < total_cri_drug:
+            st.error(f"El volumen final común ({format_cri_value(total_cri_final_volume)} mL) no alcanza para los {format_cri_value(total_cri_drug)} mL de fármacos. Aumenta el volumen final o revisa las entradas prescritas.")
+        elif not cri_errors:
+            total_cri_diluent = total_cri_final_volume - total_cri_drug
+            st.markdown("### Preparación conjunta")
+            cri_totals = st.columns(4)
+            cri_totals[0].metric("Fármacos a cargar", f"{format_cri_value(total_cri_drug)} mL")
+            cri_totals[1].metric("Diluyente a añadir una vez", f"{format_cri_value(total_cri_diluent)} mL")
+            cri_totals[2].metric("Volumen final de la jeringa", f"{format_cri_value(total_cri_final_volume)} mL")
+            cri_totals[3].metric("Ritmo común", f"{format_cri_value(shared_cri_rate)} mL/h")
+            st.write(f"Duración común: **{format_cri_value(shared_cri_duration)} h**. El diluyente se añade una sola vez a la mezcla; no se suman volúmenes finales por fármaco.")
+            st.warning("Verifica compatibilidad, estabilidad, concentración final y protocolo antes de mezclar. El cálculo solo resuelve volúmenes; no valida que los fármacos puedan compartir jeringa/bolsa.")
+    else:
+        st.info("Modo de preparaciones separadas: cada fila corresponde a su propia jeringa/bolsa y conserva su propio volumen final y ritmo. No se suman entre sí.")
 elif not cri_errors:
     st.info("Añade una fila e introduce medicamento, dosis, duración y concentración; después elige volumen final o ritmo en mL/h.")
 
