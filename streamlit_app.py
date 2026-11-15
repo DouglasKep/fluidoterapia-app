@@ -4,7 +4,6 @@ La aplicación separa mantenimiento, reposición del déficit y pérdidas
 continuadas para que puedan pautarse con soluciones distintas si procede.
 """
 
-# VERSION ACTUALIZADA 2026-11-15: CRI conjunta + ritmo K automático + preparación en mL de solución base y KCl.
 from __future__ import annotations
 
 import pandas as pd
@@ -954,7 +953,32 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             k_rate = st.number_input("Aporte total de K prescrito (mEq/kg/h)", min_value=0.0, max_value=0.5, value=float(k_rate_default), step=0.01, format="%.3f", key="iv_k_rate_manual", help="Se actualiza con el potasio sérico mientras uses este modo. No superar 0,5 mEq/kg/h.")
         else:
             k_rate = float(k_rate_default)
-        k_fluid_rate = st.number_input("Ritmo de esta solución (mL/h)", min_value=0.0, value=0.0, step=1.0, key="iv_k_fluid_rate")
+        limit_total_fluids = st.checkbox(
+            "Limitar el ritmo total incluyendo otros fluidos",
+            key="iv_k_limit_total_fluids",
+            help="Activa esta opción para reservar parte del límite a otras infusiones continuas que recibe el paciente."
+        )
+        if limit_total_fluids:
+            max_total_fluid_rate = st.number_input(
+                "Límite máximo de todas las infusiones (mL/h)",
+                min_value=0.0, value=0.5, step=0.1, key="iv_k_max_total_rate"
+            )
+            other_fluid_rate = st.number_input(
+                "Ritmo conjunto de los otros fluidos/CRI (mL/h)",
+                min_value=0.0, value=0.0, step=0.1, key="iv_k_other_fluid_rate",
+                help="Suma de las demás soluciones continuas que entran al paciente."
+            )
+            k_fluid_rate = max_total_fluid_rate - other_fluid_rate
+            if k_fluid_rate > 0:
+                st.info(f"Ritmo disponible para la bolsa con KCl: **{k_fluid_rate:.3g} mL/h**. La suma de esta bolsa y las otras infusiones no superará {max_total_fluid_rate:.3g} mL/h.")
+            else:
+                st.error("Los otros fluidos ya alcanzan o superan el límite total; no queda ritmo disponible para una bolsa adicional con KCl.")
+        else:
+            k_fluid_rate = st.number_input(
+                "Ritmo de infusión de la bolsa completa (mL/h)",
+                min_value=0.0, value=0.0, step=1.0, key="iv_k_fluid_rate",
+                help="Introduce el ritmo real de la bomba para toda la bolsa ya preparada; no es el ritmo ni el volumen de KCl."
+            )
     with k_col2:
         k_bag_ml = st.number_input("Volumen final de bolsa (mL)", min_value=1.0, value=250.0, step=10.0, key="iv_k_bag_ml")
         k_stock = st.number_input("Concentración de KCl (mEq/mL)", min_value=0.0, value=2.0, step=0.1, key="iv_k_stock")
@@ -968,7 +992,7 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             k_base = 4.0
         else:
             k_base = st.number_input("Potasio de la solución base (mEq/L; según etiqueta)", min_value=0.0, value=0.0, step=0.5, key="iv_k_base_manual")
-        st.caption("Se usa 0 mEq/L para SSF y 4 mEq/L para Ringer lactato; comprueba siempre la etiqueta del producto. [Composición estándar de Ringer lactato (Baxter)](https://www.baxterpi.com/pi-pdf/Lactated_Ringers_Injection_%2BViaflex_PI.pdf).")
+        st.caption("Se usa 0 mEq/L para SSF y 4 mEq/L para Ringer lactato; comprueba siempre la etiqueta del producto.")
     if k_rate > 0 and k_fluid_rate > 0 and k_stock > 0:
         required_mEq_h = k_rate * weight
         target_mEq_L = required_mEq_h / k_fluid_rate * 1000
@@ -985,10 +1009,11 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             additive_ml = ((target_mEq_L - k_base) * k_bag_ml / 1000) / stock_net_mEq_ml
             base_fluid_ml = k_bag_ml - additive_ml
             if additive_ml >= k_bag_ml or base_fluid_ml < 0:
-                st.error(f"Con el ritmo automático de {k_rate:.3f} mEq/kg/h y el ritmo de fluido de {k_fluid_rate:.3g} mL/h, no cabe el KCl necesario en un volumen final de {k_bag_ml:g} mL. Comprueba peso, ritmo de fluido, volumen final y concentración del KCl; no cambies la dosis prescrita solo para hacerla caber.")
+                st.error(f"Con el ritmo automático de {k_rate:.3f} mEq/kg/h y una bomba a {k_fluid_rate:.3g} mL/h, la mezcla tendría que aportar {target_mEq_L:.3g} mEq/L. El cálculo requeriría {additive_ml:.3g} mL de KCl para un volumen final de {k_bag_ml:g} mL, por lo que no queda volumen para la solución base. No existe una preparación válida con estos valores.")
+                st.info("El campo de mL/h es el ritmo de infusión de toda la bolsa. Introduce el ritmo real prescrito para esa bolsa. No cambies el ritmo de K prescrito solo para obtener una mezcla que quepa.")
             else:
                 added_mEq = additive_ml * k_stock
-                base_mEq = base_fluid_ml * k_base_mEq_ml
+                base_mEq = base_fluid_ml * base_k_mEq_ml
                 total_mEq = added_mEq + base_mEq
                 st.subheader(f"Preparación para {k_bag_ml:g} mL finales")
                 prep_cols = st.columns(3)
@@ -998,8 +1023,10 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 st.write(f"**Preparación:** medir **{base_fluid_ml:.3g} mL de {k_base_solution}** y añadir **{additive_ml:.3g} mL de KCl**. Mezclar muy bien. No añadir el KCl a una bolsa que ya tenga el volumen final completo: retirar primero el volumen de KCl o preparar el volumen base calculado.")
                 st.write(f"Aporte a {k_fluid_rate:g} mL/h: **{required_mEq_h:.3g} mEq/h ({k_rate:.3f} mEq/kg/h)** · concentración final estimada: **{total_mEq / (k_bag_ml / 1000):.3g} mEq/L**.")
                 st.caption("Cálculo de composición basado en el K que ya contiene la solución base. Verifica la concentración real de la etiqueta, la vía, compatibilidad, diuresis, función renal y protocolo local. El volumen y ritmo deben validarse clínicamente; usar bomba, mezclar completamente y controlar K/ECG según gravedad.")
+    elif k_rate > 0 and k_fluid_rate <= 0:
+        st.error("No hay un ritmo disponible para la solución con KCl dentro del límite total de fluidos.")
     else:
-        st.info("Introduce el ritmo de fluido y la concentración de KCl para obtener los mL de solución base y de KCl.")
+        st.info("Introduce el ritmo de infusión de la bolsa completa y la concentración de KCl para obtener los mL de solución base y de KCl.")
     st.markdown("Fuente de seguridad: [AAHA 2024 Fluid Therapy Guidelines, hipopotasemia](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-5-fluid-therapy-in-ill-patients/). Máximo recomendado de suplementación IV: 0,5 mEq/kg/h; nunca administrar fluidos con KCl en bolo.")
 
 st.divider()
