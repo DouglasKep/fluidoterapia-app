@@ -916,8 +916,14 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
     k_col1, k_col2 = st.columns(2)
     with k_col1:
         k_serum = st.number_input("Potasio sérico (mmol/L; numéricamente igual a mEq/L)", min_value=0.0, value=0.0, step=0.1, key="iv_k_serum")
-        k_schedule = st.selectbox("Tabla orientativa", ["AAHA 2024", "Rangos de la foto adjunta"], key="iv_k_schedule")
-        if k_schedule == "AAHA 2024":
+        k_schedule = st.selectbox(
+            "Tabla orientativa",
+            ["AAHA 2024 · dosis por kg/h", "Rangos de la primera foto · dosis por kg/h", "Tabla adjunta · mEq KCl/L y velocidad máxima"],
+            key="iv_k_schedule",
+        )
+        table_kcl_add_mEq_L = None
+        table_vmax_mlkg_h = None
+        if k_schedule == "AAHA 2024 · dosis por kg/h":
             if k_serum <= 0:
                 k_rate_default = 0.0
             elif k_serum < 2.0:
@@ -930,8 +936,9 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 k_rate_default = 0.125
             else:
                 k_rate_default = 0.05
-            st.caption("AAHA: <2,0: 0,5; 2,0–2,5: 0,3–0,4; 2,6–3,0: 0,2–0,25; 3,1–3,5: 0,1–0,15; >3,5: 0,05 mEq/kg/h.")
-        else:
+            st.caption("AAHA 2024, dosis orientativas: <2,0: 0,5; 2,0–2,5: 0,3–0,4; 2,6–3,0: 0,2–0,25; 3,1–3,5: 0,1–0,15; >3,5: 0,05 mEq/kg/h.")
+            st.caption("La misma tabla muestra concentraciones de ejemplo a 60 mL/kg/día en un perro de 10 kg (25 mL/h): 200; 120–160; 80–100; 40–60; y 20 mEq/L, respectivamente. No son concentraciones universales: esta calculadora deriva la concentración del ritmo real introducido.")
+        elif k_schedule == "Rangos de la primera foto · dosis por kg/h":
             if k_serum <= 0:
                 k_rate_default = 0.0
             elif k_serum > 3.5:
@@ -942,17 +949,41 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
                 k_rate_default = 0.0
             else:
                 k_rate_default = 0.45
-            st.caption("La foto indica 3,5–5,5: 0,05–0,1; 3,0–3,5: 0,15–0,2; <3,2: 0,4–0,5 mEq/kg/h. Entre 3,0 y <3,2 se contradicen dos rangos; el aporte inicial queda en 0 para que se introduzca la pauta ya prescrita. Entre 3,2 y <3,5 aplicamos solo el rango 3,0–3,5.")
-        st.metric("Aporte de K sugerido automáticamente", f"{k_rate_default:.3f} mEq/kg/h", f"Según K sérico {k_serum:.1f} mmol/L · {k_schedule}")
-        use_manual_k_rate = st.checkbox("Introducir otro ritmo indicado en la prescripción", key="iv_k_manual_override")
-        if use_manual_k_rate:
-            k_auto_signature = (k_schedule, round(float(k_serum), 3))
-            if st.session_state.get("_iv_k_auto_signature") != k_auto_signature:
-                st.session_state["iv_k_rate_manual"] = float(k_rate_default)
-                st.session_state["_iv_k_auto_signature"] = k_auto_signature
-            k_rate = st.number_input("Aporte total de K prescrito (mEq/kg/h)", min_value=0.0, max_value=0.5, value=float(k_rate_default), step=0.01, format="%.3f", key="iv_k_rate_manual", help="Se actualiza con el potasio sérico mientras uses este modo. No superar 0,5 mEq/kg/h.")
+            st.caption("La foto indica 3,5–5,5: 0,05–0,1; 3,0–3,5: 0,15–0,2; <3,2: 0,4–0,5 mEq/kg/h. Entre 3,0 y <3,2 los rangos se solapan; no se asigna automáticamente una dosis.")
         else:
-            k_rate = float(k_rate_default)
+            k_rate_default = 0.0
+            if 0 < k_serum < 2.0:
+                table_kcl_add_mEq_L, table_vmax_mlkg_h = 80.0, 6.0
+            elif 2.1 <= k_serum <= 2.5:
+                table_kcl_add_mEq_L, table_vmax_mlkg_h = 60.0, 8.0
+            elif 2.6 <= k_serum <= 3.0:
+                table_kcl_add_mEq_L, table_vmax_mlkg_h = 40.0, 12.0
+            elif 3.1 <= k_serum <= 3.5:
+                table_kcl_add_mEq_L, table_vmax_mlkg_h = 30.0, 18.0
+            elif 3.6 <= k_serum <= 5.0:
+                table_kcl_add_mEq_L, table_vmax_mlkg_h = 20.0, 25.0
+            if table_kcl_add_mEq_L is None:
+                st.warning("La tabla adjunta no define una fila para este valor de K (incluye un hueco entre 2,0 y 2,1 mmol/L). No se selecciona una concentración automáticamente.")
+            else:
+                st.metric("KCl indicado por tabla para cada litro", f"{table_kcl_add_mEq_L:.0f} mEq/L", f"Velocidad máxima: {table_vmax_mlkg_h:.0f} mL/kg/h")
+                st.caption("La tabla adjunta especifica concentración añadida y velocidad máxima; no prescribe administrar la solución a esa velocidad. La dosis real depende del ritmo de bomba elegido.")
+        if k_schedule != "Tabla adjunta · mEq KCl/L y velocidad máxima":
+            if k_schedule == "AAHA 2024 · dosis por kg/h" and 2.0 <= k_serum <= 3.5:
+                st.metric("Punto medio calculado del rango AAHA", f"{k_rate_default:.3f} mEq/kg/h", f"K sérico {k_serum:.1f} mmol/L")
+                st.caption("El valor mostrado es el punto medio aritmético del intervalo AAHA; no una dosis única prescrita por la guía. Confirma el punto del rango apropiado para el paciente.")
+            else:
+                st.metric("Aporte de K de referencia", f"{k_rate_default:.3f} mEq/kg/h", f"Según K sérico {k_serum:.1f} mmol/L · {k_schedule}")
+            use_manual_k_rate = st.checkbox("Introducir otro ritmo indicado en la prescripción", key="iv_k_manual_override")
+            if use_manual_k_rate:
+                k_auto_signature = (k_schedule, round(float(k_serum), 3))
+                if st.session_state.get("_iv_k_auto_signature") != k_auto_signature:
+                    st.session_state["iv_k_rate_manual"] = float(k_rate_default)
+                    st.session_state["_iv_k_auto_signature"] = k_auto_signature
+                k_rate = st.number_input("Aporte total de K prescrito (mEq/kg/h)", min_value=0.0, max_value=0.5, value=float(k_rate_default), step=0.01, format="%.3f", key="iv_k_rate_manual", help="Se actualiza con el potasio sérico mientras uses este modo. No superar 0,5 mEq/kg/h.")
+            else:
+                k_rate = float(k_rate_default)
+        else:
+            k_rate = 0.0
         limit_total_fluids = st.checkbox(
             "Limitar el ritmo total incluyendo otros fluidos",
             key="iv_k_limit_total_fluids",
@@ -992,8 +1023,54 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             k_base = 4.0
         else:
             k_base = st.number_input("Potasio de la solución base (mEq/L; según etiqueta)", min_value=0.0, value=0.0, step=0.5, key="iv_k_base_manual")
-        st.caption("Se usa 0 mEq/L para SSF y 4 mEq/L para Ringer lactato; comprueba siempre la etiqueta del producto.")
-    if k_rate > 0 and k_fluid_rate > 0 and k_stock > 0:
+        st.caption("Se usa 0 mEq/L para SSF y 4 mEq/L para Ringer lactato; comprueba siempre la etiqueta del producto. [Composición estándar de Ringer lactato (Baxter)](https://www.baxterpi.com/pi-pdf/Lactated_Ringers_Injection_%2BViaflex_PI.pdf).")
+        k_access = st.selectbox("Acceso de infusión", ["Vía periférica", "Vía central"], key="iv_k_access")
+        if k_access == "Vía periférica":
+            max_k_concentration = 60.0
+            st.caption("Límite conservador de la app: 60 mEq/L por vía periférica; confirma el protocolo del centro. [Referencia clínica sobre concentraciones periféricas](https://todaysveterinarypractice.com/wp-content/uploads/sites/4/2018/03/TVP-2018-0304_Waddle_Fluid-Therapy-Part-2_03.pdf).")
+        else:
+            max_k_concentration = st.number_input(
+                "Máxima concentración final de K autorizada por protocolo (mEq/L; 0 si no está definida)",
+                min_value=0.0, value=0.0, step=10.0, key="iv_k_central_max_conc",
+                help="No hay un límite universal central fijado por esta app. Introduce el máximo del protocolo local; sin él no se muestra una preparación."
+            )
+    if k_schedule == "Tabla adjunta · mEq KCl/L y velocidad máxima":
+        if table_kcl_add_mEq_L is None:
+            pass  # ya se muestra el aviso de intervalo sin fila
+        elif k_fluid_rate <= 0 or k_stock <= 0:
+            st.info("Introduce el ritmo de infusión de la bolsa y la concentración del KCl para calcular la preparación de la tabla.")
+        elif k_fluid_rate > table_vmax_mlkg_h * weight:
+            st.error(f"El ritmo de la bolsa ({k_fluid_rate:.3g} mL/h) supera el máximo de la tabla para este peso ({table_vmax_mlkg_h * weight:.3g} mL/h). No se calcula una preparación a ese ritmo.")
+        else:
+            additive_ml = (table_kcl_add_mEq_L * k_bag_ml / 1000) / k_stock
+            base_fluid_ml = k_bag_ml - additive_ml
+            base_k_mEq_ml = k_base / 1000
+            total_k_mEq = additive_ml * k_stock + base_fluid_ml * base_k_mEq_ml
+            final_k_concentration = total_k_mEq / (k_bag_ml / 1000)
+            actual_kcl_rate = table_kcl_add_mEq_L * k_fluid_rate / (1000 * weight)
+            actual_total_k_rate = final_k_concentration * k_fluid_rate / (1000 * weight)
+            allowed_by_absolute_max = 0.5 * weight * 1000 / final_k_concentration if final_k_concentration > 0 else 0.0
+            actual_allowed_rate = min(table_vmax_mlkg_h * weight, allowed_by_absolute_max)
+            if additive_ml >= k_bag_ml or base_fluid_ml < 0:
+                st.error("El volumen calculado de KCl supera el volumen final de la bolsa. No existe una preparación válida con esta concentración de stock.")
+            elif k_access == "Vía central" and max_k_concentration <= 0:
+                st.warning("Indica el máximo de concentración permitido por el protocolo local para esta vía central antes de calcular la preparación.")
+            elif final_k_concentration > max_k_concentration:
+                st.error(f"La concentración final calculada ({final_k_concentration:.3g} mEq/L, incluido el K de la solución base) supera el máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}. No se muestra una receta.")
+            elif actual_total_k_rate > 0.5:
+                st.error(f"El aporte total calculado, incluyendo el K de la solución base, sería {actual_total_k_rate:.3f} mEq/kg/h y superaría 0,5 mEq/kg/h. Reduce el ritmo de la bolsa según valoración veterinaria.")
+            else:
+                added_mEq = additive_ml * k_stock
+                st.subheader(f"Preparación según tabla para {k_bag_ml:g} mL finales")
+                prep_cols = st.columns(3)
+                prep_cols[0].metric(f"{k_base_solution} a medir", f"{base_fluid_ml:.3g} mL")
+                prep_cols[1].metric(f"KCl concentrado a añadir ({k_stock:g} mEq/mL)", f"{additive_ml:.3g} mL", f"{added_mEq:.3g} mEq de KCl")
+                prep_cols[2].metric("Volumen final", f"{k_bag_ml:g} mL")
+                st.write(f"**Preparación:** medir **{base_fluid_ml:.3g} mL de {k_base_solution}** y añadir **{additive_ml:.3g} mL de KCl**; mezclar completamente.")
+                st.write(f"KCl en la mezcla: **{table_kcl_add_mEq_L:.0f} mEq/L añadidos** · K total estimado incluyendo el fluido base: **{final_k_concentration:.3g} mEq/L**. A {k_fluid_rate:.3g} mL/h, el aporte calculado es **{actual_kcl_rate:.3f} mEq/kg/h de KCl** ({actual_total_k_rate:.3f} mEq/kg/h incluyendo el K base).")
+                st.metric("Máximo de la tabla para este peso", f"{table_vmax_mlkg_h * weight:.3g} mL/h", f"Máximo por tope de 0,5 mEq/kg/h y K base: {actual_allowed_rate:.3g} mL/h")
+                st.caption("La tabla da un máximo, no una velocidad objetivo. Comprueba acceso IV, etiqueta, compatibilidad, diuresis, función renal y protocolo local. Nunca administrar en bolo; usar bomba y controlar electrolitos/ECG según gravedad.")
+    elif k_rate > 0 and k_fluid_rate > 0 and k_stock > 0:
         required_mEq_h = k_rate * weight
         target_mEq_L = required_mEq_h / k_fluid_rate * 1000
         base_k_mEq_ml = k_base / 1000
@@ -1004,6 +1081,10 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
             st.error(f"La solución base ({k_base:g} mEq/L de K) ya supera la concentración objetivo ({target_mEq_L:.3g} mEq/L). Con esta solución no se puede alcanzar ese aporte añadiendo KCl.")
         elif stock_net_mEq_ml <= 0:
             st.error("La concentración indicada del KCl no permite preparar esta mezcla; comprueba la etiqueta y las unidades.")
+        elif k_access == "Vía central" and max_k_concentration <= 0:
+            st.warning("Indica el máximo de concentración permitido por el protocolo local para esta vía central antes de calcular la preparación.")
+        elif target_mEq_L > max_k_concentration:
+            st.error(f"La concentración objetivo calculada es {target_mEq_L:.3g} mEq/L, por encima del máximo seleccionado ({max_k_concentration:.3g} mEq/L) para {k_access.lower()}. La app bloquea la receta para evitar recomendar una mezcla demasiado concentrada. Revisa la pauta, el ritmo total y el protocolo de acceso IV.")
         else:
             required_total_mEq = target_mEq_L * k_bag_ml / 1000
             additive_ml = ((target_mEq_L - k_base) * k_bag_ml / 1000) / stock_net_mEq_ml
@@ -1027,6 +1108,7 @@ with st.expander("Calculadora de K para hipopotasemia", expanded=False):
         st.error("No hay un ritmo disponible para la solución con KCl dentro del límite total de fluidos.")
     else:
         st.info("Introduce el ritmo de infusión de la bolsa completa y la concentración de KCl para obtener los mL de solución base y de KCl.")
+    st.caption("El consenso IRIS de LRA (2024) recomienda suplementar la hipopotasemia persistente, preferir vía IV hasta normalizar y vigilar magnesio si es refractaria; no fija una pauta numérica única de KCl IV. [Consenso IRIS](https://doi.org/10.1016/j.tvjl.2024.106068).")
     st.markdown("Fuente de seguridad: [AAHA 2024 Fluid Therapy Guidelines, hipopotasemia](https://www.aaha.org/resources/2024-aaha-fluid-therapy-guidelines-for-dogs-and-cats/section-5-fluid-therapy-in-ill-patients/). Máximo recomendado de suplementación IV: 0,5 mEq/kg/h; nunca administrar fluidos con KCl en bolo.")
 
 st.divider()
